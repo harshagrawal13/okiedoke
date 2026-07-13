@@ -24,11 +24,41 @@ LAST_FULL_SYNC = FT_DIR / "last-full-sync.json"
 PORT = 8377
 
 sync_lock = threading.Lock()
-sync_state = {"running": False, "result": None}
+sync_state = {"running": False, "result": None, "startedAt": None}
+AUTO_SYNC_COOLDOWN_S = 600  # skip non-forced syncs if the last one is fresher
+
+
+def sync_progress():
+    """Fraction of rows the in-flight crawl has re-seen (determinate-ish:
+    accurate through the crawl phase, parks near 1.0 during media fetch)."""
+    started = sync_state["startedAt"]
+    if not started:
+        return None
+    try:
+        import sqlite3
+        conn = sqlite3.connect(FT_DIR / "bookmarks.db", timeout=1)
+        total, = conn.execute("SELECT COUNT(*) FROM bookmarks").fetchone()
+        seen, = conn.execute(
+            "SELECT COUNT(*) FROM bookmarks WHERE synced_at >= ?", (started,)
+        ).fetchone()
+        conn.close()
+        return (seen / total) if total else None
+    except Exception:
+        return None
+
+
+def last_sync_age_s():
+    try:
+        completed = json.loads(LAST_FULL_SYNC.read_text())["completedAt"]
+        dt = datetime.fromisoformat(completed.replace("Z", "+00:00"))
+        return (datetime.now(timezone.utc) - dt).total_seconds()
+    except Exception:
+        return None
 
 
 def run_sync():
     started_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    sync_state["startedAt"] = started_at
     proc = subprocess.run(
         ["ft", "sync", "--rebuild", "--yes"],
         capture_output=True, text=True, timeout=45 * 60,
@@ -69,12 +99,28 @@ def sync_worker():
         sync_state["result"] = {"ok": False, "error": str(e)}
     finally:
         sync_state["running"] = False
+        sync_state["startedAt"] = None
         sync_lock.release()
 
 
 class Handler(SimpleHTTPRequestHandler):
+    # Keep-alive: the page requests hundreds of images/videos; per-request
+    # sockets exhaust macOS socket buffers (ENOBUFS) and spam tracebacks.
+    protocol_version = "HTTP/1.1"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(FT_DIR), **kwargs)
+
+    def handle(self):
+        # Client disconnects and transient buffer exhaustion are routine when
+        # streaming media locally — drop the connection quietly.
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except OSError as e:
+            if e.errno != 55:  # ENOBUFS
+                raise
 
     def send_json(self, payload):
         body = json.dumps(payload).encode()
@@ -87,9 +133,15 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         # Sync runs in a background thread: a rebuild crawl takes minutes and
         # browsers time out long-idle fetches, so the client polls /sync-status.
-        if self.path != "/sync":
+        if self.path.split("?")[0] != "/sync":
             self.send_error(404)
             return
+        forced = "force=1" in (self.path.split("?") + [""])[1]
+        if not forced and not sync_state["running"]:
+            age = last_sync_age_s()
+            if age is not None and age < AUTO_SYNC_COOLDOWN_S:
+                self.send_json({"ok": True, "running": False, "skipped": True})
+                return
         if sync_lock.acquire(blocking=False):
             sync_state["running"] = True
             sync_state["result"] = None
@@ -98,7 +150,11 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/sync-status":
-            self.send_json({"running": sync_state["running"], "result": sync_state["result"]})
+            self.send_json({
+                "running": sync_state["running"],
+                "result": sync_state["result"],
+                "progress": sync_progress() if sync_state["running"] else None,
+            })
             return
         super().do_GET()
 

@@ -377,19 +377,27 @@
     color: #f4212e;
     border: 1px solid rgba(244, 33, 46, 0.35);
   }
-  #syncBtn[disabled] { opacity: 0.7; cursor: default; }
-  #syncBtn .spinner {
-    display: inline-block;
-    width: 11px;
-    height: 11px;
-    border: 2px solid var(--border-media);
-    border-top-color: var(--blue);
-    border-radius: 9999px;
-    vertical-align: -1.5px;
+  #syncBtn[disabled] { opacity: 0.85; cursor: default; }
+  #syncBtn .ring {
+    width: 14px;
+    height: 14px;
+    vertical-align: -2px;
     margin-right: 6px;
-    animation: spin 0.8s linear infinite;
+    transform: rotate(-90deg);
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  #syncBtn .ring .track { fill: none; stroke: var(--border-media); stroke-width: 3; }
+  #syncBtn .ring .arc {
+    fill: none;
+    stroke: var(--blue);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-dasharray: 50.27;      /* 2πr, r=8 */
+    stroke-dashoffset: 50.27;
+    transition: stroke-dashoffset 0.6s ease;
+  }
+  #syncBtn .ring.indeterminate { animation: spin 0.9s linear infinite; }
+  #syncBtn .ring.indeterminate .arc { stroke-dashoffset: 37.7; } /* 25% arc */
+  @keyframes spin { to { transform: rotate(270deg); } }
 
   .empty {
     padding: 60px 32px;
@@ -755,9 +763,17 @@ document.getElementById("restoreLink").addEventListener("click", () => {
 const syncBtn = document.getElementById("syncBtn");
 if (location.protocol.startsWith("http")) syncBtn.hidden = false;
 
-function syncSpinnerOn() {
+const RING_C = 50.27; // circumference matching the CSS dasharray
+
+function syncSpinnerOn(progress) {
   syncBtn.disabled = true;
-  syncBtn.innerHTML = '<span class="spinner"></span>Syncing…';
+  const pct = progress == null ? null : Math.min(99, Math.round(progress * 100));
+  syncBtn.innerHTML =
+    `<svg class="ring${pct == null ? " indeterminate" : ""}" viewBox="0 0 20 20">` +
+    `<circle class="track" cx="10" cy="10" r="8"></circle>` +
+    `<circle class="arc" cx="10" cy="10" r="8" style="stroke-dashoffset:${
+      pct == null ? "" : RING_C * (1 - pct / 100)
+    }"></circle></svg>Syncing${pct == null ? "…" : " " + pct + "%"}`;
 }
 
 function syncSpinnerOff() {
@@ -770,6 +786,7 @@ async function pollSync() {
     const res = await fetch("/sync-status");
     const st = await res.json();
     if (st.running) {
+      syncSpinnerOn(st.progress);
       setTimeout(pollSync, 2000);
       return;
     }
@@ -777,8 +794,10 @@ async function pollSync() {
       location.reload();
       return;
     }
-    alert("Sync failed: " + ((st.result && st.result.error) || "unknown error") +
-      "\n\n" + ((st.result && st.result.log) || ""));
+    if (st.result) {
+      alert("Sync failed: " + (st.result.error || "unknown error") +
+        "\n\n" + (st.result.log || ""));
+    }
   } catch {
     // server briefly unreachable (e.g. regenerating) — keep polling
     setTimeout(pollSync, 2000);
@@ -787,23 +806,33 @@ async function pollSync() {
   syncSpinnerOff();
 }
 
-syncBtn.addEventListener("click", async () => {
-  syncSpinnerOn();
+async function startSync(force) {
+  syncSpinnerOn(force ? null : 0);
   try {
-    await fetch("/sync", { method: "POST" });
-    setTimeout(pollSync, 2000);
+    const res = await fetch("/sync" + (force ? "?force=1" : ""), { method: "POST" });
+    const out = await res.json();
+    if (out.skipped) {          // synced recently — nothing to do
+      syncSpinnerOff();
+      return;
+    }
+    setTimeout(pollSync, 1500);
   } catch (err) {
     alert("Sync failed: " + err);
     syncSpinnerOff();
   }
-});
+}
 
-// If a sync is already running when the page loads, reflect it.
+syncBtn.addEventListener("click", () => startSync(true));
+
+// Auto-sync on open: kick off a background sync (the server skips it if the
+// last one was <10 min ago); if one is already running, just show it.
 if (!syncBtn.hidden) {
   fetch("/sync-status").then(r => r.json()).then(st => {
     if (st.running) {
-      syncSpinnerOn();
+      syncSpinnerOn(st.progress);
       setTimeout(pollSync, 2000);
+    } else {
+      startSync(false);
     }
   }).catch(() => {});
 }
