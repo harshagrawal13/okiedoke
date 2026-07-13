@@ -24,6 +24,7 @@ LAST_FULL_SYNC = FT_DIR / "last-full-sync.json"
 PORT = 8377
 
 sync_lock = threading.Lock()
+sync_state = {"running": False, "result": None}
 
 
 def run_sync():
@@ -61,28 +62,45 @@ def run_sync():
     return {"ok": True, "log": tail, "crawled": seen, "total": total}
 
 
+def sync_worker():
+    try:
+        sync_state["result"] = run_sync()
+    except Exception as e:
+        sync_state["result"] = {"ok": False, "error": str(e)}
+    finally:
+        sync_state["running"] = False
+        sync_lock.release()
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(FT_DIR), **kwargs)
 
-    def do_POST(self):
-        if self.path != "/sync":
-            self.send_error(404)
-            return
-        if not sync_lock.acquire(blocking=False):
-            body = json.dumps({"ok": False, "error": "sync already running"}).encode()
-        else:
-            try:
-                body = json.dumps(run_sync()).encode()
-            except Exception as e:
-                body = json.dumps({"ok": False, "error": str(e)}).encode()
-            finally:
-                sync_lock.release()
+    def send_json(self, payload):
+        body = json.dumps(payload).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_POST(self):
+        # Sync runs in a background thread: a rebuild crawl takes minutes and
+        # browsers time out long-idle fetches, so the client polls /sync-status.
+        if self.path != "/sync":
+            self.send_error(404)
+            return
+        if sync_lock.acquire(blocking=False):
+            sync_state["running"] = True
+            sync_state["result"] = None
+            threading.Thread(target=sync_worker, daemon=True).start()
+        self.send_json({"ok": True, "running": True})
+
+    def do_GET(self):
+        if self.path == "/sync-status":
+            self.send_json({"running": sync_state["running"], "result": sync_state["result"]})
+            return
+        super().do_GET()
 
     def log_message(self, fmt, *args):
         pass  # keep the terminal quiet
