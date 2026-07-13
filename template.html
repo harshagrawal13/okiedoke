@@ -1,0 +1,776 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>okiedoke</title>
+<style>
+  :root {
+    --text: #0f1419;
+    --text-2: #536471;
+    --border: #eff3f4;
+    --border-media: #cfd9de;
+    --blue: #1d9bf0;
+    --pink: #f91880;
+    --green: #00ba7c;
+    --hover: rgba(15, 20, 25, 0.03);
+    --chip-bg: #eff3f4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "TwitterChirp", -apple-system, BlinkMacSystemFont, "Segoe UI",
+      Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background: #fff;
+    font-size: 15px;
+    line-height: 1.3125;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .shell {
+    max-width: 600px;
+    margin: 0 auto;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    min-height: 100vh;
+  }
+
+  /* ---- sticky header ---- */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar .title-row {
+    padding: 10px 16px 4px;
+  }
+  .topbar h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.2px;
+  }
+  .topbar .sub {
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px 10px;
+    flex-wrap: wrap;
+  }
+  .searchbox {
+    flex: 1 1 180px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--chip-bg);
+    border: 1px solid transparent;
+    border-radius: 9999px;
+    padding: 8px 14px;
+  }
+  .searchbox:focus-within {
+    background: #fff;
+    border-color: var(--blue);
+  }
+  .searchbox svg { flex: none; fill: var(--text-2); width: 16px; height: 16px; }
+  .searchbox input {
+    border: none;
+    outline: none;
+    background: transparent;
+    font: inherit;
+    font-size: 14px;
+    width: 100%;
+    color: var(--text);
+  }
+  .chip {
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--text);
+    background: #fff;
+    border: 1px solid var(--border-media);
+    border-radius: 9999px;
+    padding: 6px 14px;
+    cursor: pointer;
+  }
+  .chip:hover { background: var(--hover); }
+  select.chip { appearance: none; -webkit-appearance: none; padding-right: 24px;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="%23536471"/></svg>');
+    background-repeat: no-repeat; background-position: right 10px center; }
+  .shown { font-size: 13px; color: var(--text-2); margin-left: auto; }
+
+  /* tag multiselect dropdown */
+  .tagdrop { position: relative; }
+  .tagdrop summary { list-style: none; display: inline-block; }
+  .tagdrop summary::-webkit-details-marker { display: none; }
+  .tagdrop summary::after { content: " ▾"; color: var(--text-2); }
+  .tagdrop[open] summary::after { content: " ▴"; }
+  .tagmenu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 30;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 0 15px rgba(101, 119, 134, 0.2), 0 0 5px rgba(101, 119, 134, 0.15);
+    padding: 8px 0;
+    max-height: 320px;
+    overflow-y: auto;
+    min-width: 240px;
+  }
+  .tagmenu label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .tagmenu label:hover { background: var(--hover); }
+  .tagmenu .cnt { color: var(--text-2); margin-left: auto; font-size: 12.5px; }
+  .tagmenu input { accent-color: var(--blue); }
+
+  /* ---- tweet card ---- */
+  article.tweet {
+    display: flex;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  article.tweet:hover { background: var(--hover); }
+  .avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 9999px;
+    object-fit: cover;
+    flex: none;
+    background: var(--chip-bg);
+  }
+  .avatar-fallback {
+    width: 40px; height: 40px; border-radius: 9999px; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: 18px;
+  }
+  .content { flex: 1; min-width: 0; }
+  .head {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    min-width: 0;
+  }
+  .head .name {
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 45%;
+    flex: none;
+  }
+  .head .name:hover { text-decoration: underline; }
+  .head .handle, .head .dot, .head .time {
+    color: var(--text-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .head .time { flex: none; }
+  .head .time:hover { text-decoration: underline; color: var(--text-2); }
+  .del {
+    margin-left: auto;
+    flex: none;
+    border: none;
+    background: transparent;
+    color: var(--text-2);
+    border-radius: 9999px;
+    width: 30px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    align-self: center;
+  }
+  .del:hover { background: rgba(244, 33, 46, 0.1); color: #f4212e; }
+  .del svg { width: 17px; height: 17px; fill: currentColor; }
+
+  .replying { color: var(--text-2); font-size: 14px; margin-top: 2px; }
+  .body {
+    margin-top: 2px;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+  .body.clamped {
+    display: -webkit-box;
+    -webkit-line-clamp: 8;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .showmore {
+    display: inline-block;
+    margin-top: 4px;
+    color: var(--blue);
+    cursor: pointer;
+    font-size: 15px;
+  }
+  .showmore:hover { text-decoration: underline; }
+
+  /* media grid */
+  .media {
+    display: grid;
+    gap: 2px;
+    margin-top: 12px;
+    border: 1px solid var(--border-media);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .media img, .media video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    background: #f7f9f9;
+  }
+  .media.n1 img, .media.n1 video { max-height: 510px; height: auto; }
+  .media.n2, .media.n3, .media.n4 { grid-template-columns: 1fr 1fr; }
+  .media.n2 { grid-auto-rows: 285px; }
+  .media.n3 { grid-auto-rows: 142px; }
+  .media.n3 > :first-child { grid-row: span 2; }
+  .media.n4 { grid-auto-rows: 142px; }
+
+  /* quoted tweet */
+  .quote {
+    margin-top: 12px;
+    border: 1px solid var(--border-media);
+    border-radius: 16px;
+    padding: 12px;
+    overflow: hidden;
+  }
+  .quote:hover { background: var(--hover); }
+  .quote .qhead {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    font-size: 15px;
+  }
+  .quote .qhead img.qavatar {
+    width: 20px; height: 20px; border-radius: 9999px; object-fit: cover;
+    margin-right: 2px; flex: none; background: var(--chip-bg);
+  }
+  .quote .qhead .name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .quote .qhead .handle { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .quote .qbody {
+    margin-top: 4px;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    font-size: 15px;
+  }
+  .quote .media { margin-top: 8px; border-radius: 12px; }
+
+  /* tags */
+  .tagrow { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill {
+    font-size: 12.5px;
+    font-weight: 600;
+    border-radius: 9999px;
+    padding: 3px 10px;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    max-width: 100%;
+  }
+
+  /* action bar */
+  .actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+    max-width: 425px;
+    color: var(--text-2);
+  }
+  .act {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  .act svg { width: 18.75px; height: 18.75px; fill: currentColor; }
+  .act.repost:hover { color: var(--green); }
+  .act.like:hover { color: var(--pink); }
+  .act.bm:hover, .act.reply:hover, .act.open:hover { color: var(--blue); }
+
+  /* ---- multi-select mode ---- */
+  .selcircle {
+    display: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 9999px;
+    border: 2px solid var(--border-media);
+    flex: none;
+    align-self: flex-start;
+    margin-top: 10px;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 13px;
+  }
+  body.selecting .selcircle { display: flex; }
+  body.selecting .del { display: none; }
+  article.tweet.selected { background: rgba(29, 155, 240, 0.08); }
+  article.tweet.selected .selcircle {
+    background: var(--blue);
+    border-color: var(--blue);
+  }
+  article.tweet.selected .selcircle::after { content: "✓"; }
+
+  .selbar {
+    display: none;
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border);
+  }
+  body.selecting .selbar { display: flex; }
+  .selbar .selcount { font-weight: 700; }
+  .btn {
+    font: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    border-radius: 9999px;
+    padding: 8px 18px;
+    cursor: pointer;
+    border: 1px solid var(--border-media);
+    background: #fff;
+    color: var(--text);
+  }
+  .btn:hover { background: var(--hover); }
+  .btn-danger {
+    background: #f4212e;
+    border-color: #f4212e;
+    color: #fff;
+    margin-left: auto;
+  }
+  .btn-danger:hover { background: #dc1e29; }
+  .btn-danger:disabled { opacity: 0.5; cursor: default; }
+  .restore { font-size: 13px; color: var(--blue); cursor: pointer; white-space: nowrap; }
+  .restore:hover { text-decoration: underline; }
+
+  .pill.deleted-x {
+    background: rgba(244, 33, 46, 0.08);
+    color: #f4212e;
+    border: 1px solid rgba(244, 33, 46, 0.35);
+  }
+  #syncBtn[disabled] { opacity: 0.6; cursor: default; }
+  #syncBtn .spin {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty {
+    padding: 60px 32px;
+    text-align: center;
+    color: var(--text-2);
+  }
+  .empty .big { font-size: 29px; font-weight: 800; color: var(--text); margin-bottom: 8px; }
+</style>
+
+<div class="shell">
+  <div class="topbar">
+    <div class="title-row">
+      <h1>Bookmarks</h1>
+      <div class="sub"><span id="totalCount">0</span> saved</div>
+    </div>
+    <div class="controls">
+      <div class="searchbox">
+        <svg viewBox="0 0 24 24"><path d="M10.25 3.75c-3.59 0-6.5 2.91-6.5 6.5s2.91 6.5 6.5 6.5c1.795 0 3.419-.726 4.596-1.904 1.178-1.177 1.904-2.801 1.904-4.596 0-3.59-2.91-6.5-6.5-6.5zm-8.5 6.5c0-4.694 3.806-8.5 8.5-8.5s8.5 3.806 8.5 8.5c0 1.986-.682 3.815-1.824 5.262l4.781 4.781-1.414 1.414-4.781-4.781c-1.447 1.142-3.276 1.824-5.262 1.824-4.694 0-8.5-3.806-8.5-8.5z"/></svg>
+        <input id="search" type="text" placeholder="Search bookmarks" autocomplete="off">
+      </div>
+      <details class="tagdrop" id="tagDropdown">
+        <summary class="chip" id="tagSummary">Tags</summary>
+        <div class="tagmenu" id="tagMenu"></div>
+      </details>
+      <select class="chip" id="sortKey">
+        <option value="date">Latest</option>
+        <option value="likes">Most liked</option>
+        <option value="reposts">Most reposted</option>
+        <option value="author">Author</option>
+      </select>
+      <button class="chip" id="sortDir" title="Toggle sort direction">↓</button>
+      <button class="chip" id="selectToggle">Select</button>
+      <button class="chip" id="syncBtn" hidden>Sync</button>
+      <span class="restore" id="restoreLink" hidden></span>
+      <span class="shown"><span id="shownCount">0</span> shown</span>
+    </div>
+  </div>
+
+  <div id="timeline"></div>
+
+  <div class="selbar">
+    <span class="selcount"><span id="selCount">0</span> selected</span>
+    <button class="btn" id="selCancel">Cancel</button>
+    <button class="btn btn-danger" id="selDelete" disabled>Delete</button>
+  </div>
+</div>
+
+<script>
+const DATA = /*__BOOKMARKS_DATA__*/[];
+
+function loadHidden() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem("hiddenBookmarks") || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+const state = {
+  search: "",
+  tags: new Set(),
+  sortKey: "date",
+  sortDir: "desc",
+  hidden: loadHidden(),
+  selecting: false,
+  selected: new Set(),
+};
+
+function saveHidden() {
+  localStorage.setItem("hiddenBookmarks", JSON.stringify([...state.hidden]));
+  updateRestoreLink();
+}
+
+function updateRestoreLink() {
+  const el = document.getElementById("restoreLink");
+  el.hidden = state.hidden.size === 0;
+  el.textContent = `Restore ${state.hidden.size} deleted`;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+// Runs on already-escaped text: URLs, @mentions, #hashtags become links.
+function linkify(escaped) {
+  return escaped
+    .replace(/(https?:\/\/[^\s&]+(?:&amp;[^\s&]+)*)/g,
+      '<a href="$1" target="_blank" rel="noopener">$1</a>')
+    .replace(/(^|[^\w/])@(\w{1,15})\b/g,
+      '$1<a href="https://x.com/$2" target="_blank" rel="noopener">@$2</a>')
+    .replace(/(^|\s)#(\w+)/g,
+      '$1<a href="https://x.com/hashtag/$2" target="_blank" rel="noopener">#$2</a>');
+}
+
+function fmtCount(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "K";
+  return String(n);
+}
+
+function hueOf(s) {
+  let hash = 0;
+  const key = s.toLowerCase();
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return Math.abs(hash) % 360;
+}
+
+function pillStyle(tag) {
+  const h = hueOf(tag);
+  return `background: hsl(${h}, 80%, 94%); color: hsl(${h}, 70%, 32%);`;
+}
+
+function avatarHtml(b) {
+  if (b.avatar) {
+    return `<img class="avatar" src="${escapeHtml(b.avatar)}" loading="lazy" alt="">`;
+  }
+  const h = hueOf(b.handle || b.author || "?");
+  const initial = (b.author || b.handle || "?").trim().charAt(0).toUpperCase();
+  return `<div class="avatar-fallback" style="background: hsl(${h}, 55%, 55%)">${escapeHtml(initial)}</div>`;
+}
+
+function mediaGrid(media) {
+  if (!media || !media.length) return "";
+  const n = Math.min(media.length, 4);
+  const items = media.map(m => m.type === "video"
+    ? `<video src="${escapeHtml(m.src)}" controls preload="metadata" playsinline></video>`
+    : `<img src="${escapeHtml(m.src)}" loading="lazy" alt="">`
+  ).join("");
+  return `<div class="media n${n}">${items}</div>`;
+}
+
+function quoteBlock(q) {
+  if (!q) return "";
+  const av = q.avatar
+    ? `<img class="qavatar" src="${escapeHtml(q.avatar)}" loading="lazy" alt="">`
+    : "";
+  return `
+    <div class="quote" data-url="${escapeHtml(q.url)}">
+      <div class="qhead">
+        ${av}
+        <span class="name">${escapeHtml(q.author)}</span>
+        <span class="handle">@${escapeHtml(q.handle)}</span>
+      </div>
+      ${q.text ? `<div class="qbody">${linkify(escapeHtml(q.text))}</div>` : ""}
+      ${mediaGrid(q.media)}
+    </div>`;
+}
+
+function replyLine(rp) {
+  if (!rp) return "";
+  return `<div class="replying">Replying to <a href="https://x.com/${encodeURIComponent(rp.handle)}" target="_blank" rel="noopener">@${escapeHtml(rp.handle)}</a></div>`;
+}
+
+const ICONS = {
+  reply: '<svg viewBox="0 0 24 24"><path d="M1.751 10c0-4.42 3.584-8 8.005-8h4.366c4.49 0 8.129 3.64 8.129 8.13 0 2.96-1.607 5.68-4.196 7.11l-8.054 4.46v-3.69h-.067c-4.49.1-8.183-3.51-8.183-8.01zm8.005-6c-3.317 0-6.005 2.69-6.005 6 0 3.37 2.77 6.08 6.138 6.01l.351-.01h1.761v2.3l5.087-2.81c1.951-1.08 3.163-3.13 3.163-5.36 0-3.39-2.744-6.13-6.129-6.13H9.756z"/></svg>',
+  repost: '<svg viewBox="0 0 24 24"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z"/></svg>',
+  like: '<svg viewBox="0 0 24 24"><path d="M16.697 5.5c-1.222-.06-2.679.51-3.89 2.16l-.805 1.09-.806-1.09C9.984 6.01 8.526 5.44 7.304 5.5c-1.243.07-2.349.78-2.91 1.91-.552 1.12-.633 2.78.479 4.82 1.074 1.97 3.257 4.27 7.129 6.61 3.87-2.34 6.052-4.64 7.126-6.61 1.111-2.04 1.03-3.7.477-4.82-.561-1.13-1.666-1.84-2.908-1.91zm4.187 7.69c-1.351 2.48-4.001 5.12-8.379 7.67l-.503.3-.504-.3c-4.379-2.55-7.029-5.19-8.382-7.67-1.36-2.5-1.41-4.86-.514-6.67.887-1.79 2.647-2.91 4.601-3.01 1.651-.09 3.368.56 4.798 2.01 1.429-1.45 3.146-2.1 4.796-2.01 1.954.1 3.714 1.22 4.601 3.01.896 1.81.846 4.17-.514 6.67z"/></svg>',
+  bookmark: '<svg viewBox="0 0 24 24"><path d="M4 4.5C4 3.12 5.119 2 6.5 2h11C18.881 2 20 3.12 20 4.5v18.44l-8-5.71-8 5.71V4.5zM6.5 4c-.276 0-.5.22-.5.5v14.56l6-4.29 6 4.29V4.5c0-.28-.224-.5-.5-.5h-11z"/></svg>',
+  open: '<svg viewBox="0 0 24 24"><path d="M12 2.59l5.7 5.7-1.41 1.42L13 6.41V16h-2V6.41l-3.3 3.3-1.41-1.42L12 2.59zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z"/></svg>',
+  trash: '<svg viewBox="0 0 24 24"><path d="M16 6V4.5C16 3.12 14.88 2 13.5 2h-3C9.11 2 8 3.12 8 4.5V6H3v2h1.06l.81 11.21C4.98 20.78 6.28 22 7.86 22h8.27c1.58 0 2.88-1.22 3-2.79L19.93 8H21V6h-5zm-6-1.5c0-.28.22-.5.5-.5h3c.27 0 .5.22.5.5V6h-4V4.5zm7.13 14.57c-.04.52-.47.93-1 .93H7.86c-.53 0-.96-.41-1-.93L6.07 8h11.85l-.79 11.07z"/></svg>',
+};
+
+// X collapses long posts behind a "Show more" link; ~560 chars or 8+ lines counts as long.
+function bodyHtml(text) {
+  if (!text) return "";
+  const long = text.length > 560 || text.split("\n").length > 8;
+  const body = `<div class="body${long ? " clamped" : ""}">${linkify(escapeHtml(text))}</div>`;
+  return long ? body + `<span class="showmore">Show more</span>` : body;
+}
+
+function tweetHtml(b) {
+  return `
+    <article class="tweet" data-id="${escapeHtml(b.id)}" data-url="${escapeHtml(b.url)}">
+      <div class="selcircle"></div>
+      ${avatarHtml(b)}
+      <div class="content">
+        <div class="head">
+          <a class="name" href="https://x.com/${encodeURIComponent(b.handle)}" target="_blank" rel="noopener" style="color: var(--text);">${escapeHtml(b.author)}</a>
+          <span class="handle">@${escapeHtml(b.handle)}</span>
+          <span class="dot">·</span>
+          <a class="time" href="${escapeHtml(b.url)}" target="_blank" rel="noopener">${escapeHtml(b.dateDisplay)}</a>
+          <button class="del" type="button" title="Remove from view">${ICONS.trash}</button>
+        </div>
+        ${replyLine(b.replyParent)}
+        ${bodyHtml(b.text)}
+        ${mediaGrid(b.media)}
+        ${quoteBlock(b.quoted)}
+        ${b.tags.length ? `<div class="tagrow">${b.tags.map(t =>
+          t.toLowerCase() === "deleted on x"
+            ? `<span class="pill deleted-x">Deleted on X</span>`
+            : `<span class="pill" style="${pillStyle(t)}">${escapeHtml(t)}</span>`).join("")}</div>` : ""}
+        <div class="actions">
+          <span class="act reply">${ICONS.reply}</span>
+          <span class="act repost">${ICONS.repost}<span>${fmtCount(b.reposts)}</span></span>
+          <span class="act like">${ICONS.like}<span>${fmtCount(b.likes)}</span></span>
+          <span class="act bm">${ICONS.bookmark}<span>${fmtCount(b.bookmarks)}</span></span>
+          <span class="act open">${ICONS.open}</span>
+        </div>
+      </div>
+    </article>`;
+}
+
+function render(rows) {
+  const timeline = document.getElementById("timeline");
+  if (!rows.length) {
+    timeline.innerHTML = `<div class="empty"><div class="big">No bookmarks found</div>Try a different search or clear your tag filters.</div>`;
+  } else {
+    timeline.innerHTML = rows.map(tweetHtml).join("");
+  }
+  document.getElementById("shownCount").textContent = rows.length.toLocaleString();
+}
+
+function applyState() {
+  let rows = DATA.filter(b => !state.hidden.has(b.id));
+  if (state.tags.size > 0) {
+    rows = rows.filter(b => b.tags.some(t => state.tags.has(t.toLowerCase())));
+  }
+  if (state.search) {
+    const q = state.search.toLowerCase();
+    rows = rows.filter(b =>
+      (b.text || "").toLowerCase().includes(q) ||
+      (b.author || "").toLowerCase().includes(q) ||
+      (b.handle || "").toLowerCase().includes(q) ||
+      b.tags.some(t => t.toLowerCase().includes(q)) ||
+      (b.quoted && (b.quoted.text || "").toLowerCase().includes(q))
+    );
+  }
+  const dir = state.sortDir === "asc" ? 1 : -1;
+  const key = state.sortKey;
+  rows = [...rows].sort((a, b) => {
+    if (key === "author") return dir * (a.author || "").localeCompare(b.author || "");
+    if (key === "likes") return dir * (a.likes - b.likes);
+    if (key === "reposts") return dir * (a.reposts - b.reposts);
+    return dir * (a.ts - b.ts);
+  });
+  render(rows);
+}
+
+function buildTagOptions() {
+  const counts = new Map();
+  for (const b of DATA) {
+    for (const t of b.tags) {
+      const key = t.toLowerCase();
+      const cur = counts.get(key) || { label: t, n: 0 };
+      cur.n += 1;
+      counts.set(key, cur);
+    }
+  }
+  const sorted = [...counts.entries()].sort((a, b) => b[1].n - a[1].n);
+  const menu = document.getElementById("tagMenu");
+  menu.innerHTML = sorted.map(([key, { label, n }]) => `
+    <label><input type="checkbox" value="${escapeHtml(key)}">
+      <span>${escapeHtml(label)}</span><span class="cnt">${n}</span></label>
+  `).join("");
+  menu.querySelectorAll("input").forEach(cb => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) state.tags.add(cb.value);
+      else state.tags.delete(cb.value);
+      updateTagSummary();
+      applyState();
+    });
+  });
+}
+
+function updateTagSummary() {
+  const el = document.getElementById("tagSummary");
+  el.textContent = state.tags.size === 0 ? "Tags" : `${state.tags.size} tag${state.tags.size > 1 ? "s" : ""}`;
+}
+
+function updateSelBar() {
+  document.getElementById("selCount").textContent = state.selected.size;
+  document.getElementById("selDelete").disabled = state.selected.size === 0;
+}
+
+function setSelecting(on) {
+  state.selecting = on;
+  state.selected.clear();
+  document.body.classList.toggle("selecting", on);
+  document.getElementById("selectToggle").textContent = on ? "Done" : "Select";
+  document.querySelectorAll("article.tweet.selected").forEach(a => a.classList.remove("selected"));
+  updateSelBar();
+}
+
+// One delegated click handler: selection, delete button, quote card, or whole-tweet open.
+document.getElementById("timeline").addEventListener("click", e => {
+  if (state.selecting) {
+    const card = e.target.closest("article.tweet");
+    if (!card) return;
+    e.preventDefault();
+    const id = card.dataset.id;
+    if (state.selected.has(id)) {
+      state.selected.delete(id);
+      card.classList.remove("selected");
+    } else {
+      state.selected.add(id);
+      card.classList.add("selected");
+    }
+    updateSelBar();
+    return;
+  }
+  const del = e.target.closest(".del");
+  if (del) {
+    e.stopPropagation();
+    state.hidden.add(del.closest("article").dataset.id);
+    saveHidden();
+    applyState();
+    return;
+  }
+  const more = e.target.closest(".showmore");
+  if (more) {
+    e.stopPropagation();
+    const body = more.previousElementSibling;
+    const clamped = body.classList.toggle("clamped");
+    more.textContent = clamped ? "Show more" : "Show less";
+    return;
+  }
+  if (e.target.closest("a") || e.target.tagName === "VIDEO") return;
+  const quote = e.target.closest(".quote");
+  if (quote && quote.dataset.url) {
+    e.stopPropagation();
+    window.open(quote.dataset.url, "_blank", "noopener");
+    return;
+  }
+  const card = e.target.closest("article.tweet");
+  if (card) window.open(card.dataset.url, "_blank", "noopener");
+});
+
+document.getElementById("search").addEventListener("input", e => {
+  state.search = e.target.value.trim();
+  applyState();
+});
+document.getElementById("sortKey").addEventListener("change", e => {
+  state.sortKey = e.target.value;
+  applyState();
+});
+document.getElementById("sortDir").addEventListener("click", () => {
+  state.sortDir = state.sortDir === "desc" ? "asc" : "desc";
+  document.getElementById("sortDir").textContent = state.sortDir === "desc" ? "↓" : "↑";
+  applyState();
+});
+document.getElementById("selectToggle").addEventListener("click", () => setSelecting(!state.selecting));
+document.getElementById("selCancel").addEventListener("click", () => setSelecting(false));
+document.getElementById("selDelete").addEventListener("click", () => {
+  state.selected.forEach(id => state.hidden.add(id));
+  saveHidden();
+  setSelecting(false);
+  applyState();
+});
+document.getElementById("restoreLink").addEventListener("click", () => {
+  state.hidden.clear();
+  saveHidden();
+  applyState();
+});
+
+// Sync only works when served by serve.py (a file:// page can't run ft).
+const syncBtn = document.getElementById("syncBtn");
+if (location.protocol.startsWith("http")) syncBtn.hidden = false;
+syncBtn.addEventListener("click", async () => {
+  syncBtn.disabled = true;
+  syncBtn.innerHTML = '<span class="spin">⟳</span> Syncing…';
+  try {
+    const res = await fetch("/sync", { method: "POST" });
+    const out = await res.json();
+    if (out.ok) {
+      location.reload();
+      return;
+    }
+    alert("Sync failed: " + (out.error || "unknown error") + "\n\n" + (out.log || ""));
+  } catch (err) {
+    alert("Sync failed: " + err);
+  }
+  syncBtn.disabled = false;
+  syncBtn.textContent = "Sync";
+});
+
+// close tag dropdown when clicking outside
+document.addEventListener("click", e => {
+  const dd = document.getElementById("tagDropdown");
+  if (dd.open && !dd.contains(e.target)) dd.open = false;
+});
+
+document.getElementById("totalCount").textContent = DATA.length.toLocaleString();
+buildTagOptions();
+updateRestoreLink();
+applyState();
+</script>
