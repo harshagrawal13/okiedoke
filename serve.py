@@ -26,6 +26,7 @@ PORT = 8377
 sync_lock = threading.Lock()
 sync_state = {"running": False, "result": None, "startedAt": None}
 AUTO_SYNC_COOLDOWN_S = 600  # skip non-forced syncs if the last one is fresher
+FULL_SYNC_INTERVAL_S = 24 * 3600  # re-crawl everything (for deleted-on-X) daily
 
 
 def sync_progress():
@@ -56,21 +57,22 @@ def last_sync_age_s():
         return None
 
 
-def run_sync():
+def run_sync(rebuild):
+    """Incremental sync skips bookmarks we already have (ft stops at known
+    ones); a rebuild re-crawls everything, which is what lets generate.py
+    tag rows missing from the crawl as deleted on X."""
     started_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     sync_state["startedAt"] = started_at
-    proc = subprocess.run(
-        ["ft", "sync", "--rebuild", "--yes"],
-        capture_output=True, text=True, timeout=45 * 60,
-    )
+    cmd = ["ft", "sync", "--yes"] + (["--rebuild"] if rebuild else [])
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=45 * 60)
     tail = "\n".join((proc.stdout + proc.stderr).strip().splitlines()[-15:])
     if proc.returncode != 0:
         return {"ok": False, "error": f"ft sync failed (exit {proc.returncode})", "log": tail}
 
-    # Record the crawl window only on success: generate.py marks rows whose
-    # synced_at predates this window as no longer bookmarked on X. Sanity-check
-    # that the crawl actually touched most rows so a silently-partial crawl
-    # doesn't mass-mark everything as deleted.
+    # Record the crawl window only after a successful rebuild: generate.py
+    # marks rows whose synced_at predates this window as no longer bookmarked
+    # on X. Sanity-check that the crawl actually touched most rows so a
+    # silently-partial crawl doesn't mass-mark everything as deleted.
     import sqlite3
     conn = sqlite3.connect(FT_DIR / "bookmarks.db")
     total, = conn.execute("SELECT COUNT(*) FROM bookmarks").fetchone()
@@ -78,7 +80,7 @@ def run_sync():
         "SELECT COUNT(*) FROM bookmarks WHERE synced_at >= ?", (started_at,)
     ).fetchone()
     conn.close()
-    if total and seen / total >= 0.5:
+    if rebuild and total and seen / total >= 0.5:
         LAST_FULL_SYNC.write_text(json.dumps({
             "startedAt": started_at,
             "completedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -89,12 +91,12 @@ def run_sync():
     )
     if gen.returncode != 0:
         return {"ok": False, "error": "generate.py failed", "log": gen.stderr[-2000:]}
-    return {"ok": True, "log": tail, "crawled": seen, "total": total}
+    return {"ok": True, "log": tail, "crawled": seen, "total": total, "rebuild": rebuild}
 
 
-def sync_worker():
+def sync_worker(rebuild):
     try:
-        sync_state["result"] = run_sync()
+        sync_state["result"] = run_sync(rebuild)
     except Exception as e:
         sync_state["result"] = {"ok": False, "error": str(e)}
     finally:
@@ -136,24 +138,33 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.split("?")[0] != "/sync":
             self.send_error(404)
             return
-        forced = "force=1" in (self.path.split("?") + [""])[1]
+        query = (self.path.split("?") + [""])[1]
+        forced = "force=1" in query
         if not forced and not sync_state["running"]:
             age = last_sync_age_s()
             if age is not None and age < AUTO_SYNC_COOLDOWN_S:
                 self.send_json({"ok": True, "running": False, "skipped": True})
                 return
+        # Incremental by default (skips bookmarks we already have); rebuild
+        # when explicitly requested or when deleted-on-X data is a day stale.
+        full_age = last_sync_age_s()
+        rebuild = "mode=full" in query or full_age is None or full_age > FULL_SYNC_INTERVAL_S
         if sync_lock.acquire(blocking=False):
             sync_state["running"] = True
             sync_state["result"] = None
-            threading.Thread(target=sync_worker, daemon=True).start()
+            sync_state["rebuild"] = rebuild
+            threading.Thread(target=sync_worker, args=(rebuild,), daemon=True).start()
         self.send_json({"ok": True, "running": True})
 
     def do_GET(self):
         if self.path == "/sync-status":
+            # Percent progress only makes sense for a full re-crawl; an
+            # incremental sync touches few rows, so show indeterminate.
+            rebuilding = sync_state["running"] and sync_state.get("rebuild")
             self.send_json({
                 "running": sync_state["running"],
                 "result": sync_state["result"],
-                "progress": sync_progress() if sync_state["running"] else None,
+                "progress": sync_progress() if rebuilding else None,
             })
             return
         super().do_GET()

@@ -277,7 +277,7 @@
   .quote .media { margin-top: 8px; border-radius: 12px; }
 
   /* tags */
-  .tagrow { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .tagrow { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .pill {
     font-size: 12.5px;
     font-weight: 600;
@@ -288,6 +288,32 @@
     word-break: break-word;
     max-width: 100%;
   }
+  .pill .rmtag { cursor: pointer; margin-left: 3px; opacity: 0.55; font-weight: 700; }
+  .pill .rmtag:hover { opacity: 1; }
+  .pill.addtag {
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    background: none;
+    border: 1px dashed var(--border-media);
+    color: var(--text-2);
+    padding: 2px 9px;
+    border-radius: 9999px;
+    cursor: pointer;
+    line-height: 1.4;
+  }
+  .pill.addtag:hover { color: var(--blue); border-color: var(--blue); }
+  .taginput {
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    border: 1px solid var(--blue);
+    border-radius: 9999px;
+    padding: 2px 10px;
+    outline: none;
+    width: 110px;
+  }
+  body.selecting .pill.addtag, body.selecting .pill .rmtag { display: none; }
 
   /* action bar */
   .actions {
@@ -440,6 +466,7 @@
 
   <div class="selbar">
     <span class="selcount"><span id="selCount">0</span> selected</span>
+    <button class="btn" id="selAll">Select all</button>
     <button class="btn" id="selCancel">Cancel</button>
     <button class="btn btn-danger" id="selDelete" disabled>Delete</button>
   </div>
@@ -456,15 +483,35 @@ function loadHidden() {
   }
 }
 
+function loadCustomTags() {
+  try {
+    return JSON.parse(localStorage.getItem("customTags") || "{}");
+  } catch {
+    return {};
+  }
+}
+
 const state = {
   search: "",
   tags: new Set(),
   sortKey: "date",
   sortDir: "desc",
   hidden: loadHidden(),
+  customTags: loadCustomTags(),
   selecting: false,
   selected: new Set(),
+  visibleIds: [],
 };
+
+function saveCustomTags() {
+  localStorage.setItem("customTags", JSON.stringify(state.customTags));
+}
+
+// A bookmark's effective tags: derived (from the data) plus user-added.
+function tagsOf(b) {
+  const custom = state.customTags[b.id] || [];
+  return custom.length ? b.tags.concat(custom) : b.tags;
+}
 
 function saveHidden() {
   localStorage.setItem("hiddenBookmarks", JSON.stringify([...state.hidden]));
@@ -590,10 +637,13 @@ function tweetHtml(b) {
         ${bodyHtml(b.text)}
         ${mediaGrid(b.media)}
         ${quoteBlock(b.quoted)}
-        ${b.tags.length ? `<div class="tagrow">${b.tags.map(t =>
+        <div class="tagrow">${b.tags.map(t =>
           t.toLowerCase() === "deleted on x"
             ? `<span class="pill deleted-x">Deleted on X</span>`
-            : `<span class="pill" style="${pillStyle(t)}">${escapeHtml(t)}</span>`).join("")}</div>` : ""}
+            : `<span class="pill" style="${pillStyle(t)}">${escapeHtml(t)}</span>`).join("")
+        }${(state.customTags[b.id] || []).map(t =>
+          `<span class="pill" style="${pillStyle(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)}<span class="rmtag" title="Remove tag">×</span></span>`).join("")
+        }<button class="pill addtag" type="button" title="Add tag">+</button></div>
         <div class="actions">
           <span class="act reply">${ICONS.reply}</span>
           <span class="act repost">${ICONS.repost}<span>${fmtCount(b.reposts)}</span></span>
@@ -613,12 +663,17 @@ function render(rows) {
     timeline.innerHTML = rows.map(tweetHtml).join("");
   }
   document.getElementById("shownCount").textContent = rows.length.toLocaleString();
+  state.visibleIds = rows.map(b => b.id);
+  if (state.selecting) {
+    timeline.querySelectorAll("article.tweet").forEach(a =>
+      a.classList.toggle("selected", state.selected.has(a.dataset.id)));
+  }
 }
 
 function applyState() {
   let rows = DATA.filter(b => !state.hidden.has(b.id));
   if (state.tags.size > 0) {
-    rows = rows.filter(b => b.tags.some(t => state.tags.has(t.toLowerCase())));
+    rows = rows.filter(b => tagsOf(b).some(t => state.tags.has(t.toLowerCase())));
   }
   if (state.search) {
     const q = state.search.toLowerCase();
@@ -626,7 +681,7 @@ function applyState() {
       (b.text || "").toLowerCase().includes(q) ||
       (b.author || "").toLowerCase().includes(q) ||
       (b.handle || "").toLowerCase().includes(q) ||
-      b.tags.some(t => t.toLowerCase().includes(q)) ||
+      tagsOf(b).some(t => t.toLowerCase().includes(q)) ||
       (b.quoted && (b.quoted.text || "").toLowerCase().includes(q))
     );
   }
@@ -644,7 +699,7 @@ function applyState() {
 function buildTagOptions() {
   const counts = new Map();
   for (const b of DATA) {
-    for (const t of b.tags) {
+    for (const t of tagsOf(b)) {
       const key = t.toLowerCase();
       const cur = counts.get(key) || { label: t, n: 0 };
       cur.n += 1;
@@ -658,6 +713,7 @@ function buildTagOptions() {
       <span>${escapeHtml(label)}</span><span class="cnt">${n}</span></label>
   `).join("");
   menu.querySelectorAll("input").forEach(cb => {
+    cb.checked = state.tags.has(cb.value);
     cb.addEventListener("change", () => {
       if (cb.checked) state.tags.add(cb.value);
       else state.tags.delete(cb.value);
@@ -675,6 +731,41 @@ function updateTagSummary() {
 function updateSelBar() {
   document.getElementById("selCount").textContent = state.selected.size;
   document.getElementById("selDelete").disabled = state.selected.size === 0;
+  const allSelected = state.visibleIds.length > 0 &&
+    state.visibleIds.every(id => state.selected.has(id));
+  document.getElementById("selAll").textContent = allSelected ? "Deselect all" : "Select all";
+}
+
+function beginAddTag(btn) {
+  const id = btn.closest("article").dataset.id;
+  const input = document.createElement("input");
+  input.className = "taginput";
+  input.placeholder = "new tag";
+  btn.replaceWith(input);
+  input.focus();
+  let done = false;
+  const finish = commit => {
+    if (done) return;
+    done = true;
+    const val = (input.value || "").trim();
+    if (commit && val) {
+      const b = DATA.find(x => x.id === id);
+      const existing = new Set(tagsOf(b).map(t => t.toLowerCase()));
+      if (!existing.has(val.toLowerCase())) {
+        state.customTags[id] = (state.customTags[id] || []).concat(val);
+        saveCustomTags();
+        buildTagOptions();
+      }
+    }
+    applyState();
+  };
+  input.addEventListener("keydown", e => {
+    e.stopPropagation();
+    if (e.key === "Enter") finish(true);
+    if (e.key === "Escape") finish(false);
+  });
+  input.addEventListener("click", e => e.stopPropagation());
+  input.addEventListener("blur", () => finish(true));
 }
 
 function setSelecting(on) {
@@ -711,6 +802,25 @@ document.getElementById("timeline").addEventListener("click", e => {
     applyState();
     return;
   }
+  const rm = e.target.closest(".rmtag");
+  if (rm) {
+    e.stopPropagation();
+    const pill = rm.closest(".pill");
+    const id = pill.closest("article").dataset.id;
+    state.customTags[id] = (state.customTags[id] || []).filter(t => t !== pill.dataset.tag);
+    if (!state.customTags[id].length) delete state.customTags[id];
+    saveCustomTags();
+    buildTagOptions();
+    applyState();
+    return;
+  }
+  const add = e.target.closest(".addtag");
+  if (add) {
+    e.stopPropagation();
+    beginAddTag(add);
+    return;
+  }
+  if (e.target.closest(".taginput")) return;
   const more = e.target.closest(".showmore");
   if (more) {
     e.stopPropagation();
@@ -744,6 +854,15 @@ document.getElementById("sortDir").addEventListener("click", () => {
   applyState();
 });
 document.getElementById("selectToggle").addEventListener("click", () => setSelecting(!state.selecting));
+document.getElementById("selAll").addEventListener("click", () => {
+  const allSelected = state.visibleIds.length > 0 &&
+    state.visibleIds.every(id => state.selected.has(id));
+  if (allSelected) state.selected.clear();
+  else state.visibleIds.forEach(id => state.selected.add(id));
+  document.querySelectorAll("article.tweet").forEach(a =>
+    a.classList.toggle("selected", state.selected.has(a.dataset.id)));
+  updateSelBar();
+});
 document.getElementById("selCancel").addEventListener("click", () => setSelecting(false));
 document.getElementById("selDelete").addEventListener("click", () => {
   state.selected.forEach(id => state.hidden.add(id));
@@ -806,10 +925,11 @@ async function pollSync() {
   syncSpinnerOff();
 }
 
-async function startSync(force) {
-  syncSpinnerOn(force ? null : 0);
+async function startSync(force, full) {
+  syncSpinnerOn(null);
   try {
-    const res = await fetch("/sync" + (force ? "?force=1" : ""), { method: "POST" });
+    const params = [force && "force=1", full && "mode=full"].filter(Boolean).join("&");
+    const res = await fetch("/sync" + (params ? "?" + params : ""), { method: "POST" });
     const out = await res.json();
     if (out.skipped) {          // synced recently — nothing to do
       syncSpinnerOff();
@@ -822,7 +942,8 @@ async function startSync(force) {
   }
 }
 
-syncBtn.addEventListener("click", () => startSync(true));
+syncBtn.title = "Sync new bookmarks (Shift-click: full re-crawl)";
+syncBtn.addEventListener("click", e => startSync(true, e.shiftKey));
 
 // Auto-sync on open: kick off a background sync (the server skips it if the
 // last one was <10 min ago); if one is already running, just show it.
