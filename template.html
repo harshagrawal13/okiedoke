@@ -145,6 +145,12 @@
     padding: 12px 16px;
     border-bottom: 1px solid var(--border);
     cursor: pointer;
+    /* Skip layout/paint for off-screen cards — the browser only renders what's
+       near the viewport, so a 500-card timeline paints like a handful. The
+       `auto` size is remembered per card after first scroll to keep the
+       scrollbar honest. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 220px;
   }
   article.tweet:hover { background: var(--hover); }
   .avatar {
@@ -620,6 +626,18 @@ function bodyHtml(text) {
   return long ? body + `<span class="showmore">Show more</span>` : body;
 }
 
+// Tag pills for one bookmark: derived tags, then removable custom tags, then the "+" button.
+// Extracted so a tag change can re-render just this row instead of the whole timeline.
+function tagRowHtml(b) {
+  const derived = b.tags.map(t =>
+    t.toLowerCase() === "deleted on x"
+      ? `<span class="pill deleted-x">Deleted on X</span>`
+      : `<span class="pill" style="${pillStyle(t)}">${escapeHtml(t)}</span>`).join("");
+  const custom = (state.customTags[b.id] || []).map(t =>
+    `<span class="pill" style="${pillStyle(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)}<span class="rmtag" title="Remove tag">×</span></span>`).join("");
+  return derived + custom + `<button class="pill addtag" type="button" title="Add tag">+</button>`;
+}
+
 function tweetHtml(b) {
   return `
     <article class="tweet" data-id="${escapeHtml(b.id)}" data-url="${escapeHtml(b.url)}">
@@ -637,13 +655,7 @@ function tweetHtml(b) {
         ${bodyHtml(b.text)}
         ${mediaGrid(b.media)}
         ${quoteBlock(b.quoted)}
-        <div class="tagrow">${b.tags.map(t =>
-          t.toLowerCase() === "deleted on x"
-            ? `<span class="pill deleted-x">Deleted on X</span>`
-            : `<span class="pill" style="${pillStyle(t)}">${escapeHtml(t)}</span>`).join("")
-        }${(state.customTags[b.id] || []).map(t =>
-          `<span class="pill" style="${pillStyle(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)}<span class="rmtag" title="Remove tag">×</span></span>`).join("")
-        }<button class="pill addtag" type="button" title="Add tag">+</button></div>
+        <div class="tagrow">${tagRowHtml(b)}</div>
         <div class="actions">
           <span class="act reply">${ICONS.reply}</span>
           <span class="act repost">${ICONS.repost}<span>${fmtCount(b.reposts)}</span></span>
@@ -655,45 +667,108 @@ function tweetHtml(b) {
     </article>`;
 }
 
+// --- Persistent keyed card cache ---------------------------------------------
+// Each bookmark's <article> is built from HTML exactly once and kept forever.
+// Filtering/sorting/searching only *moves* these existing nodes in and out of
+// the timeline — appending an already-live node relocates it, it does not clone
+// or reload it — so avatars, images and videos load once and never again.
+// Combined with `content-visibility: auto`, off-screen cards cost ~nothing to
+// keep around, so this beats windowing while being far simpler and bug-free.
+
+const cardCache = new Map();   // id -> <article>
+const byId = new Map(DATA.map(b => [b.id, b]));
+const _builder = document.createElement("template");
+
+function getCard(b) {
+  let el = cardCache.get(b.id);
+  if (!el) {
+    _builder.innerHTML = tweetHtml(b);            // parse this one card, once
+    el = _builder.content.firstElementChild;
+    cardCache.set(b.id, el);
+  }
+  return el;
+}
+
+let _emptyEl = null;
+function emptyEl() {
+  if (!_emptyEl) {
+    _emptyEl = document.createElement("div");
+    _emptyEl.className = "empty";
+    _emptyEl.innerHTML = `<div class="big">No bookmarks found</div>Try a different search or clear your tag filters.`;
+  }
+  return _emptyEl;
+}
+
 function render(rows) {
   const timeline = document.getElementById("timeline");
   if (!rows.length) {
-    timeline.innerHTML = `<div class="empty"><div class="big">No bookmarks found</div>Try a different search or clear your tag filters.</div>`;
+    timeline.replaceChildren(emptyEl());
   } else {
-    timeline.innerHTML = rows.map(tweetHtml).join("");
+    // replaceChildren relocates cached nodes into the new order in one shot.
+    timeline.replaceChildren(...rows.map(getCard));
+    if (state.selecting) {
+      for (const a of timeline.children) a.classList.toggle("selected", state.selected.has(a.dataset.id));
+    }
   }
-  document.getElementById("shownCount").textContent = rows.length.toLocaleString();
+  setShownCount(rows.length);
   state.visibleIds = rows.map(b => b.id);
-  if (state.selecting) {
-    timeline.querySelectorAll("article.tweet").forEach(a =>
-      a.classList.toggle("selected", state.selected.has(a.dataset.id)));
+}
+
+// Precomputed, lowercased search text per bookmark (excludes tags, which mutate).
+function haystack(b) {
+  if (b._hay === undefined) {
+    b._hay = [b.text, b.author, "@" + b.handle, b.quoted && b.quoted.text]
+      .filter(Boolean).join("\n").toLowerCase();
   }
+  return b._hay;
+}
+
+// Does this bookmark pass the current hidden/tag/search filters? Shared by the
+// full re-render (applyState) and the surgical updates so they never disagree.
+function matchesFilters(b) {
+  if (state.hidden.has(b.id)) return false;
+  if (state.tags.size > 0 && !tagsOf(b).some(t => state.tags.has(t.toLowerCase()))) return false;
+  if (state.search) {
+    const q = state.search;
+    return haystack(b).includes(q) || tagsOf(b).some(t => t.toLowerCase().includes(q));
+  }
+  return true;
 }
 
 function applyState() {
-  let rows = DATA.filter(b => !state.hidden.has(b.id));
-  if (state.tags.size > 0) {
-    rows = rows.filter(b => tagsOf(b).some(t => state.tags.has(t.toLowerCase())));
-  }
-  if (state.search) {
-    const q = state.search.toLowerCase();
-    rows = rows.filter(b =>
-      (b.text || "").toLowerCase().includes(q) ||
-      (b.author || "").toLowerCase().includes(q) ||
-      (b.handle || "").toLowerCase().includes(q) ||
-      tagsOf(b).some(t => t.toLowerCase().includes(q)) ||
-      (b.quoted && (b.quoted.text || "").toLowerCase().includes(q))
-    );
-  }
   const dir = state.sortDir === "asc" ? 1 : -1;
   const key = state.sortKey;
-  rows = [...rows].sort((a, b) => {
+  const rows = DATA.filter(matchesFilters).sort((a, b) => {
     if (key === "author") return dir * (a.author || "").localeCompare(b.author || "");
     if (key === "likes") return dir * (a.likes - b.likes);
     if (key === "reposts") return dir * (a.reposts - b.reposts);
     return dir * (a.ts - b.ts);
   });
   render(rows);
+}
+
+// --- Surgical DOM updates: touch only the affected card so a delete or a tag
+// change never rebuilds (and reloads the media of) all ~500 tweets. ---
+
+function setShownCount(n) {
+  document.getElementById("shownCount").textContent = n.toLocaleString();
+}
+
+// Re-render just one card's tag pills after an add/remove.
+function refreshTagRow(id) {
+  const b = byId.get(id);
+  const art = cardCache.get(id);
+  if (b && art) art.querySelector(".tagrow").innerHTML = tagRowHtml(b);
+}
+
+// Drop a card from the DOM without rebuilding the rest; keep visibleIds/count in sync.
+function removeArticle(art) {
+  const id = art.dataset.id;
+  art.remove();
+  const i = state.visibleIds.indexOf(id);
+  if (i !== -1) state.visibleIds.splice(i, 1);
+  setShownCount(state.visibleIds.length);
+  if (!state.visibleIds.length) applyState();  // fall back to the empty-state view
 }
 
 function buildTagOptions() {
@@ -749,7 +824,7 @@ function beginAddTag(btn) {
     done = true;
     const val = (input.value || "").trim();
     if (commit && val) {
-      const b = DATA.find(x => x.id === id);
+      const b = byId.get(id);
       const existing = new Set(tagsOf(b).map(t => t.toLowerCase()));
       if (!existing.has(val.toLowerCase())) {
         state.customTags[id] = (state.customTags[id] || []).concat(val);
@@ -757,7 +832,7 @@ function beginAddTag(btn) {
         buildTagOptions();
       }
     }
-    applyState();
+    refreshTagRow(id);  // redraw just this card's pills (also restores the "+" on cancel)
   };
   input.addEventListener("keydown", e => {
     e.stopPropagation();
@@ -797,21 +872,25 @@ document.getElementById("timeline").addEventListener("click", e => {
   const del = e.target.closest(".del");
   if (del) {
     e.stopPropagation();
-    state.hidden.add(del.closest("article").dataset.id);
+    const art = del.closest("article");
+    state.hidden.add(art.dataset.id);
     saveHidden();
-    applyState();
+    removeArticle(art);
     return;
   }
   const rm = e.target.closest(".rmtag");
   if (rm) {
     e.stopPropagation();
     const pill = rm.closest(".pill");
-    const id = pill.closest("article").dataset.id;
+    const art = pill.closest("article");
+    const id = art.dataset.id;
     state.customTags[id] = (state.customTags[id] || []).filter(t => t !== pill.dataset.tag);
     if (!state.customTags[id].length) delete state.customTags[id];
     saveCustomTags();
     buildTagOptions();
-    applyState();
+    // Removing a tag can drop the card out of an active tag filter; otherwise just redraw its pills.
+    if (matchesFilters(byId.get(id))) refreshTagRow(id);
+    else removeArticle(art);
     return;
   }
   const add = e.target.closest(".addtag");
@@ -840,9 +919,12 @@ document.getElementById("timeline").addEventListener("click", e => {
   if (card) window.open(card.dataset.url, "_blank", "noopener");
 });
 
+// Debounce so typing doesn't re-filter+re-render on every keystroke.
+let searchTimer;
 document.getElementById("search").addEventListener("input", e => {
-  state.search = e.target.value.trim();
-  applyState();
+  const v = e.target.value.trim().toLowerCase();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { state.search = v; applyState(); }, 120);
 });
 document.getElementById("sortKey").addEventListener("change", e => {
   state.sortKey = e.target.value;
@@ -865,10 +947,15 @@ document.getElementById("selAll").addEventListener("click", () => {
 });
 document.getElementById("selCancel").addEventListener("click", () => setSelecting(false));
 document.getElementById("selDelete").addEventListener("click", () => {
-  state.selected.forEach(id => state.hidden.add(id));
+  const gone = state.selected;
+  gone.forEach(id => state.hidden.add(id));
   saveHidden();
+  // Remove the selected cards in place rather than rebuilding the whole timeline.
+  for (const a of [...document.querySelectorAll("article.tweet.selected")]) a.remove();
+  state.visibleIds = state.visibleIds.filter(id => !gone.has(id));
+  setShownCount(state.visibleIds.length);
   setSelecting(false);
-  applyState();
+  if (!state.visibleIds.length) applyState();  // fall back to the empty-state view
 });
 document.getElementById("restoreLink").addEventListener("click", () => {
   state.hidden.clear();
