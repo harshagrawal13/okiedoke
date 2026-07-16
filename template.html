@@ -319,6 +319,27 @@
     outline: none;
     width: 110px;
   }
+  /* add-tag autocomplete (body-level, position:fixed) */
+  .tagsuggest {
+    position: fixed;
+    z-index: 40;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 0 15px rgba(101, 119, 134, 0.2), 0 0 5px rgba(101, 119, 134, 0.15);
+    padding: 5px 0;
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  .tagsuggest .opt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    cursor: pointer;
+  }
+  .tagsuggest .opt.active, .tagsuggest .opt:hover { background: var(--hover); }
+  .tagsuggest .opt .pill { font-size: 12.5px; font-weight: 600; padding: 2px 10px; }
+  .tagsuggest .opt .cnt { margin-left: auto; color: var(--text-2); font-size: 12px; }
   body.selecting .pill.addtag, body.selecting .pill .rmtag { display: none; }
 
   /* action bar */
@@ -771,7 +792,9 @@ function removeArticle(art) {
   if (!state.visibleIds.length) applyState();  // fall back to the empty-state view
 }
 
-function buildTagOptions() {
+// Every tag currently in use (derived + custom), most-frequent first.
+// Shared by the filter dropdown and the add-tag autocomplete.
+function tagCountsSorted() {
   const counts = new Map();
   for (const b of DATA) {
     for (const t of tagsOf(b)) {
@@ -781,7 +804,11 @@ function buildTagOptions() {
       counts.set(key, cur);
     }
   }
-  const sorted = [...counts.entries()].sort((a, b) => b[1].n - a[1].n);
+  return [...counts.entries()].sort((a, b) => b[1].n - a[1].n);
+}
+
+function buildTagOptions() {
+  const sorted = tagCountsSorted();
   const menu = document.getElementById("tagMenu");
   menu.innerHTML = sorted.map(([key, { label, n }]) => `
     <label><input type="checkbox" value="${escapeHtml(key)}">
@@ -813,34 +840,93 @@ function updateSelBar() {
 
 function beginAddTag(btn) {
   const id = btn.closest("article").dataset.id;
+  const own = new Set(tagsOf(byId.get(id)).map(t => t.toLowerCase()));
+  // Existing tags this bookmark doesn't already have, most-used first.
+  const pool = tagCountsSorted()
+    .map(([key, { label, n }]) => ({ key, label, n }))
+    .filter(t => !own.has(t.key));
+
   const input = document.createElement("input");
   input.className = "taginput";
   input.placeholder = "new tag";
+  input.autocomplete = "off";
   btn.replaceWith(input);
   input.focus();
-  let done = false;
-  const finish = commit => {
+
+  // The suggestion menu lives on <body> with position:fixed so the card's
+  // `content-visibility` paint containment can never clip it.
+  const menu = document.createElement("div");
+  menu.className = "tagsuggest";
+  document.body.appendChild(menu);
+
+  let matches = [], active = -1, done = false;
+
+  const positionMenu = () => {
+    const r = input.getBoundingClientRect();
+    menu.style.minWidth = Math.max(r.width, 170) + "px";
+    menu.style.left = Math.round(Math.min(r.left, innerWidth - menu.offsetWidth - 8)) + "px";
+    const h = menu.offsetHeight;
+    const below = r.bottom + 4;
+    menu.style.top = Math.round(below + h > innerHeight ? Math.max(8, r.top - h - 4) : below) + "px";
+  };
+
+  const highlight = () =>
+    [...menu.children].forEach((el, i) => el.classList.toggle("active", i === active));
+
+  const renderMenu = () => {
+    const q = input.value.trim().toLowerCase();
+    matches = (q ? pool.filter(t => t.key.includes(q)) : pool).slice(0, 8);
+    active = -1;
+    if (!matches.length) { menu.style.display = "none"; return; }
+    menu.style.display = "";
+    menu.innerHTML = matches.map((t, i) =>
+      `<div class="opt" data-i="${i}"><span class="pill" style="${pillStyle(t.label)}">${escapeHtml(t.label)}</span><span class="cnt">${t.n}</span></div>`
+    ).join("");
+    positionMenu();
+  };
+
+  const finish = (commit, valOverride) => {
     if (done) return;
     done = true;
-    const val = (input.value || "").trim();
-    if (commit && val) {
-      const b = byId.get(id);
-      const existing = new Set(tagsOf(b).map(t => t.toLowerCase()));
-      if (!existing.has(val.toLowerCase())) {
-        state.customTags[id] = (state.customTags[id] || []).concat(val);
-        saveCustomTags();
-        buildTagOptions();
-      }
+    menu.remove();
+    window.removeEventListener("scroll", onScroll, true);
+    const val = (valOverride != null ? valOverride : (input.value || "").trim());
+    if (commit && val && !own.has(val.toLowerCase())) {
+      state.customTags[id] = (state.customTags[id] || []).concat(val);
+      saveCustomTags();
+      buildTagOptions();
     }
     refreshTagRow(id);  // redraw just this card's pills (also restores the "+" on cancel)
   };
+
+  const onScroll = () => { if (!done) finish(true); };  // commit & close if the page scrolls
+
+  input.addEventListener("input", renderMenu);
   input.addEventListener("keydown", e => {
     e.stopPropagation();
-    if (e.key === "Enter") finish(true);
-    if (e.key === "Escape") finish(false);
+    if (e.key === "Enter") {
+      finish(true, active >= 0 ? matches[active].label : undefined);
+    } else if (e.key === "Escape") {
+      if (menu.style.display !== "none") menu.style.display = "none";  // 1st Esc: close menu
+      else finish(false);                                             // 2nd Esc: cancel add
+    } else if (e.key === "ArrowDown" && matches.length) {
+      e.preventDefault(); active = (active + 1) % matches.length; highlight();
+    } else if (e.key === "ArrowUp" && matches.length) {
+      e.preventDefault(); active = (active - 1 + matches.length) % matches.length; highlight();
+    }
   });
   input.addEventListener("click", e => e.stopPropagation());
+  // mousedown (fires before the input's blur) so picking a suggestion commits cleanly.
+  menu.addEventListener("mousedown", e => {
+    const opt = e.target.closest(".opt");
+    if (!opt) return;
+    e.preventDefault();
+    finish(true, matches[+opt.dataset.i].label);
+  });
   input.addEventListener("blur", () => finish(true));
+  window.addEventListener("scroll", onScroll, true);
+
+  renderMenu();  // show existing tags immediately on open
 }
 
 function setSelecting(on) {
