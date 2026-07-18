@@ -212,6 +212,13 @@
   }
   .tm-x:hover { background: var(--hover); }
   .tm-note { padding: 0 18px 10px; font-size: 13px; color: var(--text-2); }
+  .tm-tabs { display: flex; gap: 6px; padding: 2px 18px 10px; }
+  .tm-tab {
+    font: inherit; font-size: 14px; font-weight: 700; color: var(--text-2);
+    background: var(--chip-bg); border: none; border-radius: 9999px; padding: 7px 16px; cursor: pointer;
+  }
+  .tm-tab:hover { background: var(--hover); }
+  .tm-tab.on { background: var(--blue); color: #fff; }
   .tm-search {
     margin: 0 18px 8px; font: inherit; font-size: 15px; color: var(--text);
     border: 1px solid var(--border-media); border-radius: 10px; padding: 9px 12px; outline: none;
@@ -601,7 +608,11 @@
         <h2>Manage tags</h2>
         <button id="tmClose" class="tm-x" type="button" title="Close">×</button>
       </div>
-      <p class="tm-note">Deleting a tag removes it from every post (the posts and your synced data are never touched). Restore it any time.</p>
+      <p class="tm-note">Deleting a tag removes it from every post (the posts and your synced data are never touched). Restore it any time from the Deleted tab.</p>
+      <div class="tm-tabs">
+        <button id="tmTabActive" class="tm-tab" type="button">Active</button>
+        <button id="tmTabDeleted" class="tm-tab" type="button">Deleted</button>
+      </div>
       <input id="tmSearch" class="tm-search" type="text" autocomplete="off" placeholder="Search tags">
       <div id="tmSummary" class="tm-summary"></div>
       <div id="tmList" class="tm-list"></div>
@@ -1163,8 +1174,11 @@ function tagInventory() {
   return [...counts.entries()].sort((a, b) => b[1].n - a[1].n);
 }
 
-// --- Manage-tags modal ---
+// --- Manage-tags modal (two tabs: Active tags to delete, Deleted tags to restore) ---
+let tmTab = "active";
+
 function openTagManager() {
+  tmTab = "active";
   document.getElementById("tmSearch").value = "";
   renderTagManager();
   const bd = document.getElementById("tagManager");
@@ -1176,27 +1190,43 @@ function closeTagManager() {
   document.getElementById("tagManager").hidden = true;
 }
 
+function setTagManagerTab(tab) {
+  tmTab = tab;
+  renderTagManager();
+}
+
 function renderTagManager() {
   const q = (document.getElementById("tmSearch").value || "").trim().toLowerCase();
-  const inv = tagInventory().filter(([key, { label }]) =>
-    !q || key.includes(q) || label.toLowerCase().includes(q));
-  const deletedCount = inv.filter(([key]) => state.globalRemovedTags.has(key)).length;
+  const inv = tagInventory();
+  const active = inv.filter(([key]) => !state.globalRemovedTags.has(key));
+  const deleted = inv.filter(([key]) => state.globalRemovedTags.has(key));
 
-  const summary = document.getElementById("tmSummary");
-  summary.textContent = `${inv.length} tag${inv.length === 1 ? "" : "s"}` +
-    (deletedCount ? ` · ${deletedCount} deleted` : "");
+  document.getElementById("tmTabActive").textContent = `Active (${active.length})`;
+  document.getElementById("tmTabDeleted").textContent = `Deleted (${deleted.length})`;
+  document.getElementById("tmTabActive").classList.toggle("on", tmTab === "active");
+  document.getElementById("tmTabDeleted").classList.toggle("on", tmTab === "deleted");
+
+  const base = tmTab === "deleted" ? deleted : active;
+  const rows = base.filter(([key, { label }]) =>
+    !q || key.includes(q) || label.toLowerCase().includes(q));
+
+  document.getElementById("tmSummary").textContent =
+    q ? `${rows.length} of ${base.length} shown` : `${base.length} ${tmTab} tag${base.length === 1 ? "" : "s"}`;
 
   const list = document.getElementById("tmList");
-  if (!inv.length) {
-    list.innerHTML = `<div class="tm-empty">No tags match “${escapeHtml(q)}”.</div>`;
+  if (!rows.length) {
+    const msg = q
+      ? `No ${tmTab} tags match “${escapeHtml(q)}”.`
+      : (tmTab === "deleted" ? "No deleted tags. Delete one from the Active tab." : "No tags.");
+    list.innerHTML = `<div class="tm-empty">${msg}</div>`;
     return;
   }
-  list.innerHTML = inv.map(([key, { label, n }]) => {
-    const deleted = state.globalRemovedTags.has(key);
-    return `<div class="tm-row${deleted ? " deleted" : ""}" data-tag="${escapeHtml(key)}">
+  list.innerHTML = rows.map(([key, { label, n }]) => {
+    const isDeleted = tmTab === "deleted";
+    return `<div class="tm-row${isDeleted ? " deleted" : ""}" data-tag="${escapeHtml(key)}">
       <span class="tm-pill" style="${pillStyle(label)}">${escapeHtml(label)}</span>
       <span class="tm-cnt">${n} post${n === 1 ? "" : "s"}</span>
-      ${deleted
+      ${isDeleted
         ? `<button class="tm-act restore" type="button">Restore</button>`
         : `<button class="tm-act delete" type="button">Delete</button>`}
     </div>`;
@@ -1207,7 +1237,7 @@ function renderTagManager() {
     btn.addEventListener("click", () => {
       if (btn.classList.contains("delete")) removeTagGlobally(tag);
       else restoreTagGlobally(tag);
-      renderTagManager();  // reflect the change in place, keeping the modal open
+      renderTagManager();  // the tag leaves this tab; stay put, modal open
     });
   });
 }
@@ -1504,6 +1534,8 @@ document.getElementById("sortDir").addEventListener("click", () => {
 document.getElementById("selectToggle").addEventListener("click", () => setSelecting(!state.selecting));
 document.getElementById("manageTags").addEventListener("click", openTagManager);
 document.getElementById("tmClose").addEventListener("click", closeTagManager);
+document.getElementById("tmTabActive").addEventListener("click", () => setTagManagerTab("active"));
+document.getElementById("tmTabDeleted").addEventListener("click", () => setTagManagerTab("deleted"));
 document.getElementById("tmSearch").addEventListener("input", renderTagManager);
 document.getElementById("tmSearch").addEventListener("keydown", e => {
   if (e.key === "Escape") { closeTagManager(); return; }
