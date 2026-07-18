@@ -580,6 +580,18 @@ function loadSavedFilters() {
   }
 }
 
+// Per-post overlay suppressing specific tags (derived or custom) by name.
+// LocalStorage-only, like hiddenBookmarks — the ft DB is never mutated, and
+// derived tags that regenerate on the next sync stay suppressed by name.
+function loadRemovedTags() {
+  try {
+    const v = JSON.parse(localStorage.getItem("removedTags") || "{}");
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+
 const state = {
   search: "",
   filterExpr: localStorage.getItem("filterExpr") || "",
@@ -589,6 +601,7 @@ const state = {
   sortDir: "desc",
   hidden: loadHidden(),
   customTags: loadCustomTags(),
+  removedTags: loadRemovedTags(),
   selecting: false,
   selected: new Set(),
   visibleIds: [],
@@ -598,10 +611,18 @@ function saveCustomTags() {
   localStorage.setItem("customTags", JSON.stringify(state.customTags));
 }
 
+function saveRemovedTags() {
+  localStorage.setItem("removedTags", JSON.stringify(state.removedTags));
+}
+
 // A bookmark's effective tags: derived (from the data) plus user-added.
 function tagsOf(b) {
   const custom = state.customTags[b.id] || [];
-  return custom.length ? b.tags.concat(custom) : b.tags;
+  const all = custom.length ? b.tags.concat(custom) : b.tags;
+  const removed = state.removedTags[b.id];
+  if (!removed || !removed.length) return all;
+  const rm = new Set(removed.map(t => t.toLowerCase()));
+  return all.filter(t => !rm.has(t.toLowerCase()));
 }
 
 function saveHidden() {
@@ -714,12 +735,14 @@ function bodyHtml(text) {
 // Tag pills for one bookmark: derived tags, then removable custom tags, then the "+" button.
 // Extracted so a tag change can re-render just this row instead of the whole timeline.
 function tagRowHtml(b) {
-  const derived = b.tags.map(t =>
+  const removed = new Set((state.removedTags[b.id] || []).map(t => t.toLowerCase()));
+  const rmBtn = `<span class="rmtag" title="Remove tag">×</span>`;
+  const derived = b.tags.filter(t => !removed.has(t.toLowerCase())).map(t =>
     t.toLowerCase() === "deleted on x"
-      ? `<span class="pill deleted-x">Deleted on X</span>`
-      : `<span class="pill" style="${pillStyle(t)}">${escapeHtml(t)}</span>`).join("");
-  const custom = (state.customTags[b.id] || []).map(t =>
-    `<span class="pill" style="${pillStyle(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)}<span class="rmtag" title="Remove tag">×</span></span>`).join("");
+      ? `<span class="pill deleted-x" data-tag="${escapeHtml(t)}" data-kind="derived">Deleted on X${rmBtn}</span>`
+      : `<span class="pill" style="${pillStyle(t)}" data-tag="${escapeHtml(t)}" data-kind="derived">${escapeHtml(t)}${rmBtn}</span>`).join("");
+  const custom = (state.customTags[b.id] || []).filter(t => !removed.has(t.toLowerCase())).map(t =>
+    `<span class="pill" style="${pillStyle(t)}" data-tag="${escapeHtml(t)}" data-kind="custom">${escapeHtml(t)}${rmBtn}</span>`).join("");
   return derived + custom + `<button class="pill addtag" type="button" title="Add tag">+</button>`;
 }
 
@@ -1152,8 +1175,18 @@ function beginAddTag(btn) {
     window.removeEventListener("scroll", onScroll, true);
     const val = (valOverride != null ? valOverride : (input.value || "").trim());
     if (commit && val && !own.has(val.toLowerCase())) {
-      state.customTags[id] = (state.customTags[id] || []).concat(val);
-      saveCustomTags();
+      const low = val.toLowerCase();
+      const removed = state.removedTags[id] || [];
+      if (removed.some(t => t.toLowerCase() === low)) {
+        // Re-adding a tag that was removed: just un-suppress it (keeps a
+        // derived tag derived instead of duplicating it as a custom tag).
+        state.removedTags[id] = removed.filter(t => t.toLowerCase() !== low);
+        if (!state.removedTags[id].length) delete state.removedTags[id];
+        saveRemovedTags();
+      } else {
+        state.customTags[id] = (state.customTags[id] || []).concat(val);
+        saveCustomTags();
+      }
       buildTagOptions();
     }
     refreshTagRow(id);  // redraw just this card's pills (also restores the "+" on cancel)
@@ -1230,9 +1263,17 @@ document.getElementById("timeline").addEventListener("click", e => {
     const pill = rm.closest(".pill");
     const art = pill.closest("article");
     const id = art.dataset.id;
-    state.customTags[id] = (state.customTags[id] || []).filter(t => t !== pill.dataset.tag);
-    if (!state.customTags[id].length) delete state.customTags[id];
-    saveCustomTags();
+    const tag = pill.dataset.tag;
+    if (pill.dataset.kind === "custom") {
+      // User-added tag: drop it outright so re-adding starts clean.
+      state.customTags[id] = (state.customTags[id] || []).filter(t => t !== tag);
+      if (!state.customTags[id].length) delete state.customTags[id];
+      saveCustomTags();
+    } else {
+      // Derived tag: can't touch the DB, so suppress it via the overlay.
+      state.removedTags[id] = (state.removedTags[id] || []).concat(tag);
+      saveRemovedTags();
+    }
     buildTagOptions();
     // Removing a tag can drop the card out of an active tag filter; otherwise just redraw its pills.
     if (matchesFilters(byId.get(id))) refreshTagRow(id);
