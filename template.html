@@ -193,11 +193,12 @@
 
   /* ---- manage-tags modal ---- */
   .tm-backdrop {
-    position: fixed; inset: 0; z-index: 60;
+    position: fixed; inset: 0; z-index: 1000;
     background: rgba(15, 20, 25, 0.4);
     display: flex; align-items: flex-start; justify-content: center;
     padding: 6vh 16px;
   }
+  .tm-backdrop[hidden] { display: none; }
   .tm {
     background: #fff; border-radius: 18px; width: 100%; max-width: 520px;
     max-height: 88vh; display: flex; flex-direction: column;
@@ -208,9 +209,12 @@
   .tm-head h2 { font-size: 20px; font-weight: 800; }
   .tm-x {
     margin-left: auto; border: none; background: var(--chip-bg); color: var(--text);
-    width: 32px; height: 32px; border-radius: 9999px; cursor: pointer; font-size: 20px; line-height: 1;
+    width: 38px; height: 38px; border-radius: 9999px; cursor: pointer;
+    font-size: 22px; line-height: 1; position: relative; z-index: 1;
+    display: flex; align-items: center; justify-content: center; flex: none;
   }
   .tm-x:hover { background: var(--hover); }
+  .tm-x:active { background: var(--border-media); }
   .tm-note { padding: 0 18px 10px; font-size: 13px; color: var(--text-2); }
   .tm-tabs { display: flex; gap: 6px; padding: 2px 18px 10px; }
   .tm-tab {
@@ -601,29 +605,32 @@
 
   <div id="timeline"></div>
 
-  <!-- Manage-tags modal: delete a tag from all posts, or restore a deleted one. -->
-  <div id="tagManager" class="tm-backdrop" hidden>
-    <div class="tm" role="dialog" aria-label="Manage tags" aria-modal="true">
-      <div class="tm-head">
-        <h2>Manage tags</h2>
-        <button id="tmClose" class="tm-x" type="button" title="Close">×</button>
-      </div>
-      <p class="tm-note">Deleting a tag removes it from every post (the posts and your synced data are never touched). Restore it any time from the Deleted tab.</p>
-      <div class="tm-tabs">
-        <button id="tmTabActive" class="tm-tab" type="button">Active</button>
-        <button id="tmTabDeleted" class="tm-tab" type="button">Deleted</button>
-      </div>
-      <input id="tmSearch" class="tm-search" type="text" autocomplete="off" placeholder="Search tags">
-      <div id="tmSummary" class="tm-summary"></div>
-      <div id="tmList" class="tm-list"></div>
-    </div>
-  </div>
-
   <div class="selbar">
     <span class="selcount"><span id="selCount">0</span> selected</span>
     <button class="btn" id="selAll">Select all</button>
     <button class="btn" id="selCancel">Cancel</button>
     <button class="btn btn-danger" id="selDelete" disabled>Delete</button>
+  </div>
+</div>
+
+<!-- Manage-tags modal: a top-level element (outside .shell) so its fixed
+     full-screen overlay and stacking are never trapped by the sticky,
+     backdrop-filtered header — which on Safari can otherwise swallow clicks
+     on the close button. -->
+<div id="tagManager" class="tm-backdrop" hidden>
+  <div class="tm" role="dialog" aria-label="Manage tags" aria-modal="true">
+    <div class="tm-head">
+      <h2>Manage tags</h2>
+      <button id="tmClose" class="tm-x" type="button" title="Close" aria-label="Close">×</button>
+    </div>
+    <p class="tm-note">Deleting a tag removes it from every post (the posts and your synced data are never touched). Restore it any time from the Deleted tab.</p>
+    <div class="tm-tabs">
+      <button id="tmTabActive" class="tm-tab" type="button">Active</button>
+      <button id="tmTabDeleted" class="tm-tab" type="button">Deleted</button>
+    </div>
+    <input id="tmSearch" class="tm-search" type="text" autocomplete="off" placeholder="Search tags">
+    <div id="tmSummary" class="tm-summary"></div>
+    <div id="tmList" class="tm-list"></div>
   </div>
 </div>
 
@@ -1542,7 +1549,9 @@ document.getElementById("tmSearch").addEventListener("keydown", e => {
   e.stopPropagation();
 });
 document.getElementById("tagManager").addEventListener("click", e => {
-  if (e.target.id === "tagManager") closeTagManager();  // click the dim backdrop to close
+  // Close on the dim backdrop OR the × (delegated, so a click on the button's
+  // text node or a mis-bound direct listener still closes reliably).
+  if (e.target.id === "tagManager" || e.target.closest("#tmClose")) closeTagManager();
 });
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !document.getElementById("tagManager").hidden) closeTagManager();
