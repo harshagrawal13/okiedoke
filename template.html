@@ -684,6 +684,17 @@ function loadGlobalRemovedTags() {
   }
 }
 
+// { tagLowercase: epochMs } — when each tag was last applied to a post, so the
+// tag dropdown can surface most-recently-used tags first.
+function loadTagLastUsed() {
+  try {
+    const v = JSON.parse(localStorage.getItem("tagLastUsed") || "{}");
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+
 const state = {
   search: "",
   filterExpr: localStorage.getItem("filterExpr") || "",
@@ -695,6 +706,7 @@ const state = {
   customTags: loadCustomTags(),
   removedTags: loadRemovedTags(),
   globalRemovedTags: loadGlobalRemovedTags(),
+  tagLastUsed: loadTagLastUsed(),
   selecting: false,
   selected: new Set(),
   visibleIds: [],
@@ -710,6 +722,16 @@ function saveRemovedTags() {
 
 function saveGlobalRemovedTags() {
   localStorage.setItem("globalRemovedTags", JSON.stringify([...state.globalRemovedTags]));
+}
+
+function saveTagLastUsed() {
+  localStorage.setItem("tagLastUsed", JSON.stringify(state.tagLastUsed));
+}
+
+// Stamp a tag as just-used so it sorts to the top of the tag dropdown.
+function markTagUsed(tag) {
+  state.tagLastUsed[tag.toLowerCase()] = Date.now();
+  saveTagLastUsed();
 }
 
 // A bookmark's effective tags: derived (from the data) plus user-added.
@@ -1066,8 +1088,9 @@ function removeArticle(art) {
   if (!state.visibleIds.length) applyState();  // fall back to the empty-state view
 }
 
-// Every tag currently in use (derived + custom), most-frequent first.
-// Shared by the filter dropdown and the add-tag autocomplete.
+// Every tag currently in use (derived + custom). Ordered by when you last
+// applied the tag to a post (most recent first), then by frequency for tags
+// you haven't used yet. Shared by the filter dropdown and the add-tag autocomplete.
 function tagCountsSorted() {
   const counts = new Map();
   for (const b of DATA) {
@@ -1078,7 +1101,12 @@ function tagCountsSorted() {
       counts.set(key, cur);
     }
   }
-  return [...counts.entries()].sort((a, b) => b[1].n - a[1].n);
+  const lu = state.tagLastUsed;
+  return [...counts.entries()].sort((a, b) => {
+    const la = lu[a[0]] || 0, lb = lu[b[0]] || 0;
+    if (la !== lb) return lb - la;   // most-recently-used tag first
+    return b[1].n - a[1].n;          // then most-frequent
+  });
 }
 
 // Build the whole filter dropdown: an editable boolean expression, a save row,
@@ -1403,6 +1431,7 @@ function beginAddTag(btn) {
         state.customTags[id] = (state.customTags[id] || []).concat(val);
         saveCustomTags();
       }
+      markTagUsed(low);   // float this tag to the top of the dropdown next time
       buildTagOptions();
     }
     refreshTagRow(id);  // redraw just this card's pills (also restores the "+" on cancel)
