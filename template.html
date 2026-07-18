@@ -1080,10 +1080,16 @@ function wireFilterMenu() {
 // Delete a tag from every post at once (suppress it everywhere). Reversible via
 // the "Deleted tags" restore row; posts and the ft DB are never modified.
 function removeTagGlobally(tagKey) {
-  state.globalRemovedTags.add(tagKey.toLowerCase());
+  const key = tagKey.toLowerCase();
+  state.globalRemovedTags.add(key);
   saveGlobalRemovedTags();
   refreshAllTagRows();   // strip the tag from every card's pills, no media reload
-  buildTagOptions();     // palette drops it; restore row now lists it
+  // Surgically drop just this palette row (deleting one tag doesn't change any
+  // other tag's count) so the open dropdown keeps its scroll position instead
+  // of rebuilding and jumping to the top.
+  const row = document.querySelector('#tagMenu .prow[data-tag="' + CSS.escape(key) + '"]');
+  if (row) row.remove();
+  renderRemovedTags();   // restore row now lists it
   applyState();          // re-filter (an active filter may reference the tag)
 }
 
@@ -1509,7 +1515,12 @@ if (!syncBtn.hidden) {
 // close tag dropdown when clicking outside
 document.addEventListener("click", e => {
   const dd = document.getElementById("tagDropdown");
-  if (dd.open && !dd.contains(e.target)) dd.open = false;
+  if (!dd.open) return;
+  // A click on a control inside the menu that re-rendered itself (e.g. delete
+  // or restore a tag) leaves e.target detached; that's not an outside click, so
+  // don't close the menu.
+  if (!e.target.isConnected) return;
+  if (!dd.contains(e.target)) dd.open = false;
 });
 
 document.getElementById("totalCount").textContent = DATA.length.toLocaleString();
