@@ -652,7 +652,12 @@ const DATA = /*__BOOKMARKS_DATA__*/[];
 function readJSON(key, fallback) {
   try {
     const v = JSON.parse(localStorage.getItem(key));
-    return v == null ? fallback : v;
+    if (v == null) return fallback;
+    // Guard against corrupt / wrong-shaped storage so a bad value can never
+    // crash the app at load — always fall back to a value of the expected shape.
+    if (Array.isArray(v) !== Array.isArray(fallback)) return fallback;
+    if (typeof v !== typeof fallback) return fallback;
+    return v;
   } catch {
     return fallback;
   }
