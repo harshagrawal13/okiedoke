@@ -190,6 +190,20 @@
   .pbtn.ex:hover { background: #fdeaec; border-color: #f4212e; color: #f4212e; }
   .pname { font-size: 14px; }
   .palette .cnt { color: var(--text-2); margin-left: auto; font-size: 12.5px; }
+  .pbtn.del {
+    border: none; background: none; color: var(--text-2); width: 24px; height: 24px;
+    margin-left: 2px; opacity: 0; padding: 0; display: flex; align-items: center; justify-content: center;
+  }
+  .prow:hover .pbtn.del { opacity: 0.6; }
+  .pbtn.del:hover { opacity: 1; color: #f4212e; background: #fdeaec; }
+  .pbtn.del svg { width: 14px; height: 14px; fill: currentColor; display: block; }
+  .removed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 12px 8px; }
+  .rmlbl { font-size: 11.5px; color: var(--text-2); width: 100%; }
+  .rtag {
+    font: inherit; font-size: 12.5px; font-weight: 700; color: #f4212e;
+    background: #fdeaec; border: none; border-radius: 9999px; padding: 5px 11px; cursor: pointer;
+  }
+  .rtag:hover { background: #fbd6da; }
 
   /* ---- tweet card ---- */
   article.tweet {
@@ -592,6 +606,16 @@ function loadRemovedTags() {
   }
 }
 
+// Tags deleted everywhere (from all posts at once). Also localStorage-only.
+function loadGlobalRemovedTags() {
+  try {
+    const v = JSON.parse(localStorage.getItem("globalRemovedTags") || "[]");
+    return new Set(Array.isArray(v) ? v.map(t => String(t).toLowerCase()) : []);
+  } catch {
+    return new Set();
+  }
+}
+
 const state = {
   search: "",
   filterExpr: localStorage.getItem("filterExpr") || "",
@@ -602,6 +626,7 @@ const state = {
   hidden: loadHidden(),
   customTags: loadCustomTags(),
   removedTags: loadRemovedTags(),
+  globalRemovedTags: loadGlobalRemovedTags(),
   selecting: false,
   selected: new Set(),
   visibleIds: [],
@@ -615,14 +640,19 @@ function saveRemovedTags() {
   localStorage.setItem("removedTags", JSON.stringify(state.removedTags));
 }
 
+function saveGlobalRemovedTags() {
+  localStorage.setItem("globalRemovedTags", JSON.stringify([...state.globalRemovedTags]));
+}
+
 // A bookmark's effective tags: derived (from the data) plus user-added.
 function tagsOf(b) {
   const custom = state.customTags[b.id] || [];
   const all = custom.length ? b.tags.concat(custom) : b.tags;
-  const removed = state.removedTags[b.id];
-  if (!removed || !removed.length) return all;
-  const rm = new Set(removed.map(t => t.toLowerCase()));
-  return all.filter(t => !rm.has(t.toLowerCase()));
+  const perPost = state.removedTags[b.id];
+  const global = state.globalRemovedTags;
+  if ((!perPost || !perPost.length) && global.size === 0) return all;
+  const rm = new Set((perPost || []).map(t => t.toLowerCase()));
+  return all.filter(t => { const l = t.toLowerCase(); return !rm.has(l) && !global.has(l); });
 }
 
 function saveHidden() {
@@ -735,7 +765,8 @@ function bodyHtml(text) {
 // Tag pills for one bookmark: derived tags, then removable custom tags, then the "+" button.
 // Extracted so a tag change can re-render just this row instead of the whole timeline.
 function tagRowHtml(b) {
-  const removed = new Set((state.removedTags[b.id] || []).map(t => t.toLowerCase()));
+  const removed = new Set([...(state.removedTags[b.id] || []).map(t => t.toLowerCase()),
+                           ...state.globalRemovedTags]);
   const rmBtn = `<span class="rmtag" title="Remove tag">×</span>`;
   const derived = b.tags.filter(t => !removed.has(t.toLowerCase())).map(t =>
     t.toLowerCase() === "deleted on x"
@@ -948,6 +979,15 @@ function refreshTagRow(id) {
   if (b && art) art.querySelector(".tagrow").innerHTML = tagRowHtml(b);
 }
 
+// Re-render every built card's tag pills in place (no node/media rebuild) —
+// used when a global tag change affects many cards at once.
+function refreshAllTagRows() {
+  for (const [id, art] of cardCache) {
+    const b = byId.get(id);
+    if (b) art.querySelector(".tagrow").innerHTML = tagRowHtml(b);
+  }
+}
+
 // Drop a card from the DOM without rebuilding the rest; keep visibleIds/count in sync.
 function removeArticle(art) {
   const id = art.dataset.id;
@@ -990,14 +1030,16 @@ function buildTagOptions() {
       <button id="filterSaveBtn" class="fsavebtn" type="button">Save</button>
     </div>
     <div id="savedRow" class="saved" hidden></div>
-    <div class="fdiv">Tags — <b>+</b> include, <b>−</b> exclude</div>
+    <div id="removedRow" class="removed" hidden></div>
+    <div class="fdiv">Tags — <b>+</b> include, <b>−</b> exclude, <b>🗑</b> delete from all</div>
     <div class="palette">
       ${sorted.map(([key, { label, n }]) => `
         <div class="prow" data-tag="${escapeHtml(key)}">
-          <button class="pbtn add" type="button" title="include">+</button>
-          <button class="pbtn ex" type="button" title="exclude">−</button>
+          <button class="pbtn add" type="button" title="include in filter">+</button>
+          <button class="pbtn ex" type="button" title="exclude in filter">−</button>
           <span class="pname">${escapeHtml(label)}</span>
           <span class="cnt">${n}</span>
+          <button class="pbtn del" type="button" title="Delete this tag from all posts">${ICONS.trash}</button>
         </div>`).join("")}
     </div>`;
   wireFilterMenu();
@@ -1029,8 +1071,40 @@ function wireFilterMenu() {
     const tag = row.dataset.tag;
     row.querySelector(".add").addEventListener("click", () => insertTag(tag, false));
     row.querySelector(".ex").addEventListener("click", () => insertTag(tag, true));
+    row.querySelector(".del").addEventListener("click", () => removeTagGlobally(tag));
   });
   renderSavedFilters();
+  renderRemovedTags();
+}
+
+// Delete a tag from every post at once (suppress it everywhere). Reversible via
+// the "Deleted tags" restore row; posts and the ft DB are never modified.
+function removeTagGlobally(tagKey) {
+  state.globalRemovedTags.add(tagKey.toLowerCase());
+  saveGlobalRemovedTags();
+  refreshAllTagRows();   // strip the tag from every card's pills, no media reload
+  buildTagOptions();     // palette drops it; restore row now lists it
+  applyState();          // re-filter (an active filter may reference the tag)
+}
+
+function restoreTagGlobally(tagKey) {
+  state.globalRemovedTags.delete(tagKey.toLowerCase());
+  saveGlobalRemovedTags();
+  refreshAllTagRows();
+  buildTagOptions();
+  applyState();
+}
+
+function renderRemovedTags() {
+  const row = document.getElementById("removedRow");
+  if (!row) return;
+  const arr = [...state.globalRemovedTags];
+  if (!arr.length) { row.hidden = true; row.innerHTML = ""; return; }
+  row.hidden = false;
+  row.innerHTML = `<span class="rmlbl">Deleted everywhere — click to restore:</span>` +
+    arr.map(t => `<button class="rtag" type="button" data-tag="${escapeHtml(t)}" title="Restore this tag">${escapeHtml(t)} ↺</button>`).join("");
+  row.querySelectorAll(".rtag").forEach(ch =>
+    ch.addEventListener("click", () => restoreTagGlobally(ch.dataset.tag)));
 }
 
 // Compile the expression; on success filter + persist, on error just flag the
