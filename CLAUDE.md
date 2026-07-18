@@ -35,12 +35,42 @@ The app is ONE static HTML page with all data embedded:
   `last-full-sync.json`; `generate.py` tags rows with older `synced_at`.
   It refuses to write the marker if <50% of rows were touched (partial
   crawl guard). Don't infer deletion any other way — the DB has no flag.
-- **Deletes in the UI are localStorage-only** (`hiddenBookmarks` key).
-  Nothing may ever mutate the ft database — it's the user's source of truth.
+- **All UI edits are localStorage-only** (see the schema below). Nothing may
+  ever mutate the ft database — it's the user's source of truth. The DB is
+  opened read-only everywhere; the only writes anywhere are the generated
+  `index.html` and the `last-sync.json` / `last-full-sync.json` metadata.
 - 32 bookmarks are replies; ft stores NO data about the parent tweet.
   `generate.py` reads optional `reply-parents.json`
   (`{parent_id: {handle, text}}`) if someone fetches those; the UI renders a
   "Replying to @handle" line when present.
+
+## Local data & backwards compatibility (this app is used daily — do not break it)
+
+The user's edits live only in the browser's `localStorage`. Treat these keys as
+a stable on-disk format — **renaming, removing, or changing the shape of an
+existing key silently discards real user data.**
+
+| Key | Shape | Meaning |
+|---|---|---|
+| `hiddenBookmarks` | `string[]` | ids of locally-deleted bookmarks |
+| `customTags` | `{ [id]: string[] }` | user-added tags per bookmark |
+| `removedTags` | `{ [id]: string[] }` | tags removed from a single post |
+| `globalRemovedTags` | `string[]` (lowercased) | tags deleted from every post |
+| `savedFilters` | `{name, expr}[]` | named boolean filter expressions |
+| `filterExpr` | `string` (raw) | the active filter expression |
+| `tagLastUsed` | `{ [tagLower]: epochMs }` | for most-recently-used ordering |
+
+Rules for any change:
+
+- **Read every key through `readJSON(key, fallback)`** — it returns the fallback
+  on a missing, malformed, or wrong-shaped value, so corrupt storage can never
+  crash the app at load. Never `JSON.parse(localStorage.getItem(...))` directly.
+- **Add features with NEW keys**, never by repurposing an existing one. A new
+  key absent for existing users just reads as its fallback — that's the whole
+  backwards-compatibility story, so keep it that way.
+- If a format ever genuinely must change, **migrate under a new key and leave
+  the old one intact**; do not overwrite it in place.
+- Clearing browser site data is the only thing that resets this — code must not.
 
 ## Verifying changes (required)
 

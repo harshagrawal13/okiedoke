@@ -121,9 +121,9 @@
     border-radius: 16px;
     box-shadow: 0 0 15px rgba(101, 119, 134, 0.2), 0 0 5px rgba(101, 119, 134, 0.15);
     padding: 8px 0;
-    max-height: 320px;
+    max-height: 420px;
     overflow-y: auto;
-    min-width: 240px;
+    min-width: 300px;
   }
   .tagmenu label {
     display: flex;
@@ -138,6 +138,129 @@
   .tagmenu .cnt { color: var(--text-2); margin-left: auto; font-size: 12.5px; }
   .tagmenu input { accent-color: var(--blue); }
 
+  /* boolean filter menu */
+  #tagSummary.on { color: var(--blue); max-width: 190px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .fbar { display: flex; align-items: center; gap: 6px; padding: 10px 12px 6px; }
+  .fexpr {
+    flex: 1; min-width: 0; font: inherit; font-size: 13.5px; color: var(--text);
+    border: 1px solid var(--border-media); border-radius: 9px; padding: 7px 10px; outline: none;
+  }
+  .fexpr:focus { border-color: var(--blue); }
+  .fexpr.bad { border-color: #f4212e; }
+  .fx {
+    flex: none; border: none; background: var(--chip-bg); color: var(--text-2);
+    border-radius: 9999px; width: 24px; height: 24px; cursor: pointer; font-size: 15px; line-height: 1;
+  }
+  .fx:hover { background: var(--hover); }
+  .ferr { color: #f4212e; font-size: 12px; padding: 0 13px 4px; }
+  .fsave { display: flex; gap: 6px; padding: 2px 12px 8px; }
+  .fname {
+    flex: 1; min-width: 0; font: inherit; font-size: 13px; color: var(--text);
+    border: 1px solid var(--border-media); border-radius: 9px; padding: 6px 9px; outline: none;
+  }
+  .fname:focus { border-color: var(--blue); }
+  .fsavebtn {
+    flex: none; font: inherit; font-size: 13px; font-weight: 700; color: #fff;
+    background: var(--blue); border: none; border-radius: 9999px; padding: 6px 14px; cursor: pointer;
+  }
+  .fsavebtn:hover { background: #1a8cd8; }
+  .saved { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px; }
+  .sf { display: inline-flex; align-items: center; background: var(--chip-bg); border-radius: 9999px; }
+  .sfapply {
+    font: inherit; font-size: 12.5px; font-weight: 700; color: var(--text);
+    background: none; border: none; padding: 5px 4px 5px 11px; cursor: pointer;
+  }
+  .sfdel {
+    background: none; border: none; color: var(--text-2); cursor: pointer;
+    padding: 5px 9px 5px 3px; font-size: 13px; line-height: 1;
+  }
+  .sfdel:hover { color: #f4212e; }
+  .fquick { padding: 0 12px 8px; }
+  .fquickbtn {
+    font: inherit; font-size: 13px; font-weight: 700; color: var(--text);
+    background: var(--chip-bg); border: 1px solid transparent; border-radius: 9999px;
+    padding: 6px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .fquickbtn:hover { background: var(--hover); }
+  .fquickbtn.on { background: #e8f5fe; border-color: var(--blue); color: var(--blue); }
+  .fquickbtn .cnt { color: var(--text-2); font-size: 12.5px; }
+  .fquickbtn.on .cnt { color: var(--blue); }
+  .fdiv { font-size: 12px; color: var(--text-2); padding: 6px 14px; border-top: 1px solid var(--border); }
+  .fdiv b { color: var(--text); font-weight: 700; }
+  .palette { max-height: 220px; overflow-y: auto; }
+  .prow { display: flex; align-items: center; gap: 8px; padding: 5px 14px; white-space: nowrap; }
+  .prow:hover { background: var(--hover); }
+  .pbtn {
+    flex: none; font: inherit; font-weight: 800; font-size: 13px; line-height: 1;
+    width: 22px; height: 22px; border-radius: 9999px; cursor: pointer;
+    border: 1px solid var(--border-media); background: #fff; color: var(--text-2);
+  }
+  .pbtn.add:hover { background: #e8f5fe; border-color: var(--blue); color: var(--blue); }
+  .pbtn.ex:hover { background: #fdeaec; border-color: #f4212e; color: #f4212e; }
+  .pname { font-size: 14px; }
+  .palette .cnt { color: var(--text-2); margin-left: auto; font-size: 12.5px; }
+
+  /* ---- manage-tags modal ---- */
+  .tm-backdrop {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(15, 20, 25, 0.4);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 6vh 16px;
+  }
+  .tm-backdrop[hidden] { display: none; }
+  .tm {
+    background: #fff; border-radius: 18px; width: 100%; max-width: 520px;
+    max-height: 88vh; display: flex; flex-direction: column;
+    box-shadow: 0 0 24px rgba(101, 119, 134, 0.35);
+    overflow: hidden;
+  }
+  .tm-head { display: flex; align-items: center; padding: 16px 18px 10px; }
+  .tm-head h2 { font-size: 20px; font-weight: 800; }
+  .tm-x {
+    margin-left: auto; border: none; background: var(--chip-bg); color: var(--text);
+    width: 38px; height: 38px; border-radius: 9999px; cursor: pointer;
+    font-size: 22px; line-height: 1; position: relative; z-index: 1;
+    display: flex; align-items: center; justify-content: center; flex: none;
+  }
+  .tm-x:hover { background: var(--hover); }
+  .tm-x:active { background: var(--border-media); }
+  .tm-note { padding: 0 18px 10px; font-size: 13px; color: var(--text-2); }
+  .tm-tabs { display: flex; gap: 6px; padding: 2px 18px 10px; }
+  .tm-tab {
+    font: inherit; font-size: 14px; font-weight: 700; color: var(--text-2);
+    background: var(--chip-bg); border: none; border-radius: 9999px; padding: 7px 16px; cursor: pointer;
+  }
+  .tm-tab:hover { background: var(--hover); }
+  .tm-tab.on { background: var(--blue); color: #fff; }
+  .tm-search {
+    margin: 0 18px 8px; font: inherit; font-size: 15px; color: var(--text);
+    border: 1px solid var(--border-media); border-radius: 10px; padding: 9px 12px; outline: none;
+  }
+  .tm-search:focus { border-color: var(--blue); }
+  .tm-summary { padding: 0 18px 8px; font-size: 12.5px; color: var(--text-2); }
+  .tm-list { overflow-y: auto; padding: 0 8px 12px; }
+  .tm-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 10px;
+  }
+  .tm-row:hover { background: var(--hover); }
+  .tm-row.deleted .tm-pill { opacity: 0.5; text-decoration: line-through; }
+  .tm-pill {
+    font-size: 13.5px; font-weight: 600; border-radius: 9999px; padding: 4px 12px;
+    max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .tm-cnt { font-size: 12.5px; color: var(--text-2); margin-left: auto; white-space: nowrap; }
+  .tm-act {
+    font: inherit; font-size: 13px; font-weight: 700; border-radius: 9999px;
+    padding: 6px 14px; cursor: pointer; border: 1px solid var(--border-media); white-space: nowrap;
+  }
+  .tm-act.delete { background: #fff; color: #f4212e; border-color: #f4212e; }
+  .tm-act.delete:hover { background: #fdeaec; }
+  .tm-act.restore { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .tm-act.restore:hover { background: #1a8cd8; }
+  .tm-empty { padding: 24px 18px; text-align: center; color: var(--text-2); font-size: 14px; }
+
   /* ---- tweet card ---- */
   article.tweet {
     display: flex;
@@ -145,6 +268,12 @@
     padding: 12px 16px;
     border-bottom: 1px solid var(--border);
     cursor: pointer;
+    /* Skip layout/paint for off-screen cards — the browser only renders what's
+       near the viewport, so a 500-card timeline paints like a handful. The
+       `auto` size is remembered per card after first scroll to keep the
+       scrollbar honest. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 220px;
   }
   article.tweet:hover { background: var(--hover); }
   .avatar {
@@ -313,6 +442,27 @@
     outline: none;
     width: 110px;
   }
+  /* add-tag autocomplete (body-level, position:fixed) */
+  .tagsuggest {
+    position: fixed;
+    z-index: 40;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 0 15px rgba(101, 119, 134, 0.2), 0 0 5px rgba(101, 119, 134, 0.15);
+    padding: 5px 0;
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  .tagsuggest .opt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    cursor: pointer;
+  }
+  .tagsuggest .opt.active, .tagsuggest .opt:hover { background: var(--hover); }
+  .tagsuggest .opt .pill { font-size: 12.5px; font-weight: 600; padding: 2px 10px; }
+  .tagsuggest .opt .cnt { margin-left: auto; color: var(--text-2); font-size: 12px; }
   body.selecting .pill.addtag, body.selecting .pill .rmtag { display: none; }
 
   /* action bar */
@@ -445,7 +595,7 @@
         <input id="search" type="text" placeholder="Search bookmarks" autocomplete="off">
       </div>
       <details class="tagdrop" id="tagDropdown">
-        <summary class="chip" id="tagSummary">Tags</summary>
+        <summary class="chip" id="tagSummary">Filter</summary>
         <div class="tagmenu" id="tagMenu"></div>
       </details>
       <select class="chip" id="sortKey">
@@ -456,6 +606,7 @@
       </select>
       <button class="chip" id="sortDir" title="Toggle sort direction">↓</button>
       <button class="chip" id="selectToggle">Select</button>
+      <button class="chip" id="manageTags" title="Delete or restore tags">Manage tags</button>
       <button class="chip" id="syncBtn" hidden>Sync</button>
       <span class="restore" id="restoreLink" hidden></span>
       <span class="shown"><span id="shownCount">0</span> shown</span>
@@ -472,49 +623,103 @@
   </div>
 </div>
 
+<!-- Manage-tags modal: a top-level element (outside .shell) so its fixed
+     full-screen overlay and stacking are never trapped by the sticky,
+     backdrop-filtered header — which on Safari can otherwise swallow clicks
+     on the close button. -->
+<div id="tagManager" class="tm-backdrop" hidden>
+  <div class="tm" role="dialog" aria-label="Manage tags" aria-modal="true">
+    <div class="tm-head">
+      <h2>Manage tags</h2>
+      <button id="tmClose" class="tm-x" type="button" title="Close" aria-label="Close">×</button>
+    </div>
+    <p class="tm-note">Deleting a tag removes it from every post (the posts and your synced data are never touched). Restore it any time from the Deleted tab.</p>
+    <div class="tm-tabs">
+      <button id="tmTabActive" class="tm-tab" type="button">Active</button>
+      <button id="tmTabDeleted" class="tm-tab" type="button">Deleted</button>
+    </div>
+    <input id="tmSearch" class="tm-search" type="text" autocomplete="off" placeholder="Search tags">
+    <div id="tmSummary" class="tm-summary"></div>
+    <div id="tmList" class="tm-list"></div>
+  </div>
+</div>
+
 <script>
 const DATA = /*__BOOKMARKS_DATA__*/[];
 
-function loadHidden() {
+// All persisted UI state is JSON under a localStorage key: parse-with-fallback
+// on read, JSON on write. Nothing here ever touches the ft database.
+function readJSON(key, fallback) {
   try {
-    return new Set(JSON.parse(localStorage.getItem("hiddenBookmarks") || "[]"));
+    const v = JSON.parse(localStorage.getItem(key));
+    if (v == null) return fallback;
+    // Guard against corrupt / wrong-shaped storage so a bad value can never
+    // crash the app at load — always fall back to a value of the expected shape.
+    if (Array.isArray(v) !== Array.isArray(fallback)) return fallback;
+    if (typeof v !== typeof fallback) return fallback;
+    return v;
   } catch {
-    return new Set();
+    return fallback;
   }
 }
-
-function loadCustomTags() {
-  try {
-    return JSON.parse(localStorage.getItem("customTags") || "{}");
-  } catch {
-    return {};
-  }
+function writeJSON(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
 }
 
+// Overlays that hide/annotate bookmarks and tags without ever mutating the ft
+// DB: `hidden` = deleted bookmarks; `removedTags` = per-post tag removals;
+// `globalRemovedTags` = tags deleted from every post; `tagLastUsed` = when each
+// tag was last applied (drives most-recently-used ordering in the dropdown).
 const state = {
   search: "",
-  tags: new Set(),
+  filterExpr: localStorage.getItem("filterExpr") || "",
+  filterPred: null,           // compiled predicate for filterExpr (null = match all)
+  savedFilters: readJSON("savedFilters", []),
   sortKey: "date",
   sortDir: "desc",
-  hidden: loadHidden(),
-  customTags: loadCustomTags(),
+  hidden: new Set(readJSON("hiddenBookmarks", [])),
+  customTags: readJSON("customTags", {}),
+  removedTags: readJSON("removedTags", {}),
+  globalRemovedTags: new Set(readJSON("globalRemovedTags", []).map(t => String(t).toLowerCase())),
+  tagLastUsed: readJSON("tagLastUsed", {}),
   selecting: false,
   selected: new Set(),
   visibleIds: [],
 };
 
-function saveCustomTags() {
-  localStorage.setItem("customTags", JSON.stringify(state.customTags));
+function saveCustomTags() { writeJSON("customTags", state.customTags); }
+function saveRemovedTags() { writeJSON("removedTags", state.removedTags); }
+function saveGlobalRemovedTags() { writeJSON("globalRemovedTags", [...state.globalRemovedTags]); }
+function saveTagLastUsed() { writeJSON("tagLastUsed", state.tagLastUsed); }
+
+// Stamp a tag as just-used so it sorts to the top of the tag dropdown.
+function markTagUsed(tag) {
+  state.tagLastUsed[tag.toLowerCase()] = Date.now();
+  saveTagLastUsed();
 }
 
-// A bookmark's effective tags: derived (from the data) plus user-added.
+// The single rule for whether a tag is hidden on a bookmark: removed from this
+// post, or deleted from every post. `low` must already be lowercased. Shared by
+// tagsOf() and the pill renderer so the two can never disagree. (Avoids copying
+// the — potentially large — global set per bookmark on every render.)
+function tagHidden(b, low) {
+  if (state.globalRemovedTags.has(low)) return true;
+  const perPost = state.removedTags[b.id];
+  if (perPost) for (const t of perPost) if (t.toLowerCase() === low) return true;
+  return false;
+}
+
+// A bookmark's effective (visible) tags: derived (from the data) plus user-added.
 function tagsOf(b) {
   const custom = state.customTags[b.id] || [];
-  return custom.length ? b.tags.concat(custom) : b.tags;
+  const all = custom.length ? b.tags.concat(custom) : b.tags;
+  const perPost = state.removedTags[b.id];
+  if ((!perPost || !perPost.length) && state.globalRemovedTags.size === 0) return all;
+  return all.filter(t => !tagHidden(b, t.toLowerCase()));
 }
 
 function saveHidden() {
-  localStorage.setItem("hiddenBookmarks", JSON.stringify([...state.hidden]));
+  writeJSON("hiddenBookmarks", [...state.hidden]);
   updateRestoreLink();
 }
 
@@ -620,6 +825,20 @@ function bodyHtml(text) {
   return long ? body + `<span class="showmore">Show more</span>` : body;
 }
 
+// Tag pills for one bookmark: derived tags, then removable custom tags, then the "+" button.
+// Extracted so a tag change can re-render just this row instead of the whole timeline.
+function tagRowHtml(b) {
+  const rmBtn = `<span class="rmtag" title="Remove tag">×</span>`;
+  const visible = t => !tagHidden(b, t.toLowerCase());
+  const derived = b.tags.filter(visible).map(t =>
+    t.toLowerCase() === "deleted on x"
+      ? `<span class="pill deleted-x" data-tag="${escapeHtml(t)}" data-kind="derived">Deleted on X${rmBtn}</span>`
+      : `<span class="pill" style="${pillStyle(t)}" data-tag="${escapeHtml(t)}" data-kind="derived">${escapeHtml(t)}${rmBtn}</span>`).join("");
+  const custom = (state.customTags[b.id] || []).filter(visible).map(t =>
+    `<span class="pill" style="${pillStyle(t)}" data-tag="${escapeHtml(t)}" data-kind="custom">${escapeHtml(t)}${rmBtn}</span>`).join("");
+  return derived + custom + `<button class="pill addtag" type="button" title="Add tag">+</button>`;
+}
+
 function tweetHtml(b) {
   return `
     <article class="tweet" data-id="${escapeHtml(b.id)}" data-url="${escapeHtml(b.url)}">
@@ -637,13 +856,7 @@ function tweetHtml(b) {
         ${bodyHtml(b.text)}
         ${mediaGrid(b.media)}
         ${quoteBlock(b.quoted)}
-        <div class="tagrow">${b.tags.map(t =>
-          t.toLowerCase() === "deleted on x"
-            ? `<span class="pill deleted-x">Deleted on X</span>`
-            : `<span class="pill" style="${pillStyle(t)}">${escapeHtml(t)}</span>`).join("")
-        }${(state.customTags[b.id] || []).map(t =>
-          `<span class="pill" style="${pillStyle(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)}<span class="rmtag" title="Remove tag">×</span></span>`).join("")
-        }<button class="pill addtag" type="button" title="Add tag">+</button></div>
+        <div class="tagrow">${tagRowHtml(b)}</div>
         <div class="actions">
           <span class="act reply">${ICONS.reply}</span>
           <span class="act repost">${ICONS.repost}<span>${fmtCount(b.reposts)}</span></span>
@@ -655,39 +868,162 @@ function tweetHtml(b) {
     </article>`;
 }
 
+// --- Persistent keyed card cache ---------------------------------------------
+// Each bookmark's <article> is built from HTML exactly once and kept forever.
+// Filtering/sorting/searching only *moves* these existing nodes in and out of
+// the timeline — appending an already-live node relocates it, it does not clone
+// or reload it — so avatars, images and videos load once and never again.
+// Combined with `content-visibility: auto`, off-screen cards cost ~nothing to
+// keep around, so this beats windowing while being far simpler and bug-free.
+
+const cardCache = new Map();   // id -> <article>
+const byId = new Map(DATA.map(b => [b.id, b]));
+const _builder = document.createElement("template");
+
+function getCard(b) {
+  let el = cardCache.get(b.id);
+  if (!el) {
+    _builder.innerHTML = tweetHtml(b);            // parse this one card, once
+    el = _builder.content.firstElementChild;
+    cardCache.set(b.id, el);
+  }
+  return el;
+}
+
+let _emptyEl = null;
+function emptyEl() {
+  if (!_emptyEl) {
+    _emptyEl = document.createElement("div");
+    _emptyEl.className = "empty";
+    _emptyEl.innerHTML = `<div class="big">No bookmarks found</div>Try a different search or clear your tag filters.`;
+  }
+  return _emptyEl;
+}
+
 function render(rows) {
   const timeline = document.getElementById("timeline");
   if (!rows.length) {
-    timeline.innerHTML = `<div class="empty"><div class="big">No bookmarks found</div>Try a different search or clear your tag filters.</div>`;
+    timeline.replaceChildren(emptyEl());
   } else {
-    timeline.innerHTML = rows.map(tweetHtml).join("");
+    // replaceChildren relocates cached nodes into the new order in one shot.
+    timeline.replaceChildren(...rows.map(getCard));
+    if (state.selecting) {
+      for (const a of timeline.children) a.classList.toggle("selected", state.selected.has(a.dataset.id));
+    }
   }
-  document.getElementById("shownCount").textContent = rows.length.toLocaleString();
+  setShownCount(rows.length);
   state.visibleIds = rows.map(b => b.id);
-  if (state.selecting) {
-    timeline.querySelectorAll("article.tweet").forEach(a =>
-      a.classList.toggle("selected", state.selected.has(a.dataset.id)));
+}
+
+// Precomputed, lowercased search text per bookmark (excludes tags, which mutate).
+function haystack(b) {
+  if (b._hay === undefined) {
+    b._hay = [b.text, b.author, "@" + b.handle, b.quoted && b.quoted.text]
+      .filter(Boolean).join("\n").toLowerCase();
   }
+  return b._hay;
+}
+
+// Does this bookmark pass the current hidden/tag/search filters? Shared by the
+// full re-render (applyState) and the surgical updates so they never disagree.
+// --- Boolean tag-filter expression: `and` / `or` / `not` / parentheses over
+// tag names (bare, or "quoted" for names with spaces). Compiles the string to
+// a predicate over a bookmark's lowercased tag Set. Empty string = match all. ---
+function tokenizeFilter(src) {
+  const toks = [];
+  let i = 0;
+  const space = c => c === " " || c === "\t" || c === "\n";
+  const stop = c => space(c) || "()&|!\"'".includes(c);
+  while (i < src.length) {
+    const c = src[i];
+    if (space(c)) { i++; continue; }
+    if (c === "(") { toks.push({ t: "(" }); i++; continue; }
+    if (c === ")") { toks.push({ t: ")" }); i++; continue; }
+    if (c === "!") { toks.push({ t: "not" }); i++; continue; }
+    if (c === "&") { i++; if (src[i] === "&") i++; toks.push({ t: "and" }); continue; }
+    if (c === "|") { i++; if (src[i] === "|") i++; toks.push({ t: "or" }); continue; }
+    if (c === '"' || c === "'") {
+      const q = c; i++; let s = "";
+      while (i < src.length && src[i] !== q) s += src[i++];
+      if (i >= src.length) throw new Error("unclosed quote");
+      i++; toks.push({ t: "tag", v: s.toLowerCase() }); continue;
+    }
+    let s = "";
+    while (i < src.length && !stop(src[i])) s += src[i++];
+    const low = s.toLowerCase();
+    if (low === "and") toks.push({ t: "and" });
+    else if (low === "or") toks.push({ t: "or" });
+    else if (low === "not") toks.push({ t: "not" });
+    else toks.push({ t: "tag", v: low });
+  }
+  return toks;
+}
+
+function parseFilter(src) {
+  const toks = tokenizeFilter(src);
+  let p = 0;
+  const peek = () => toks[p];
+  const atomStart = tk => tk && (tk.t === "tag" || tk.t === "(" || tk.t === "not");
+  function pOr() {
+    let n = pAnd();
+    while (peek() && peek().t === "or") { p++; const r = pAnd(), l = n; n = s => l(s) || r(s); }
+    return n;
+  }
+  function pAnd() {
+    let n = pNot();
+    // explicit `and`, or two adjacent atoms => implicit AND
+    while (peek() && (peek().t === "and" || atomStart(peek()))) {
+      if (peek().t === "and") p++;
+      const r = pNot(), l = n; n = s => l(s) && r(s);
+    }
+    return n;
+  }
+  function pNot() {
+    if (peek() && peek().t === "not") { p++; const r = pNot(); return s => !r(s); }
+    return pAtom();
+  }
+  function pAtom() {
+    const tk = peek();
+    if (!tk) throw new Error("unexpected end of filter");
+    if (tk.t === "(") {
+      p++; const n = pOr();
+      if (!peek() || peek().t !== ")") throw new Error("missing )");
+      p++; return n;
+    }
+    if (tk.t === "tag") {
+      p++;
+      // Reserved keyword: "untagged" matches bookmarks with no (visible) tags.
+      if (tk.v === "untagged") return s => s.size === 0;
+      return s => s.has(tk.v);
+    }
+    throw new Error("unexpected '" + tk.t + "'");
+  }
+  const n = pOr();
+  if (p < toks.length) throw new Error("unexpected '" + peek().t + "'");
+  return n;
+}
+
+function compileFilter(expr) {
+  const s = (expr || "").trim();
+  if (!s) return { pred: null, ok: true };
+  try { return { pred: parseFilter(s), ok: true }; }
+  catch (e) { return { pred: null, ok: false, error: e.message }; }
+}
+
+function matchesFilters(b) {
+  if (state.hidden.has(b.id)) return false;
+  if (state.filterPred && !state.filterPred(new Set(tagsOf(b).map(t => t.toLowerCase())))) return false;
+  if (state.search) {
+    const q = state.search;
+    return haystack(b).includes(q) || tagsOf(b).some(t => t.toLowerCase().includes(q));
+  }
+  return true;
 }
 
 function applyState() {
-  let rows = DATA.filter(b => !state.hidden.has(b.id));
-  if (state.tags.size > 0) {
-    rows = rows.filter(b => tagsOf(b).some(t => state.tags.has(t.toLowerCase())));
-  }
-  if (state.search) {
-    const q = state.search.toLowerCase();
-    rows = rows.filter(b =>
-      (b.text || "").toLowerCase().includes(q) ||
-      (b.author || "").toLowerCase().includes(q) ||
-      (b.handle || "").toLowerCase().includes(q) ||
-      tagsOf(b).some(t => t.toLowerCase().includes(q)) ||
-      (b.quoted && (b.quoted.text || "").toLowerCase().includes(q))
-    );
-  }
   const dir = state.sortDir === "asc" ? 1 : -1;
   const key = state.sortKey;
-  rows = [...rows].sort((a, b) => {
+  const rows = DATA.filter(matchesFilters).sort((a, b) => {
     if (key === "author") return dir * (a.author || "").localeCompare(b.author || "");
     if (key === "likes") return dir * (a.likes - b.likes);
     if (key === "reposts") return dir * (a.reposts - b.reposts);
@@ -696,7 +1032,43 @@ function applyState() {
   render(rows);
 }
 
-function buildTagOptions() {
+// --- Surgical DOM updates: touch only the affected card so a delete or a tag
+// change never rebuilds (and reloads the media of) all ~500 tweets. ---
+
+function setShownCount(n) {
+  document.getElementById("shownCount").textContent = n.toLocaleString();
+}
+
+// Re-render just one card's tag pills after an add/remove.
+function refreshTagRow(id) {
+  const b = byId.get(id);
+  const art = cardCache.get(id);
+  if (b && art) art.querySelector(".tagrow").innerHTML = tagRowHtml(b);
+}
+
+// Re-render every built card's tag pills in place (no node/media rebuild) —
+// used when a global tag change affects many cards at once.
+function refreshAllTagRows() {
+  for (const [id, art] of cardCache) {
+    const b = byId.get(id);
+    if (b) art.querySelector(".tagrow").innerHTML = tagRowHtml(b);
+  }
+}
+
+// Drop a card from the DOM without rebuilding the rest; keep visibleIds/count in sync.
+function removeArticle(art) {
+  const id = art.dataset.id;
+  art.remove();
+  const i = state.visibleIds.indexOf(id);
+  if (i !== -1) state.visibleIds.splice(i, 1);
+  setShownCount(state.visibleIds.length);
+  if (!state.visibleIds.length) applyState();  // fall back to the empty-state view
+}
+
+// Every tag currently in use (derived + custom). Ordered by when you last
+// applied the tag to a post (most recent first), then by frequency for tags
+// you haven't used yet. Shared by the filter dropdown and the add-tag autocomplete.
+function tagCountsSorted() {
   const counts = new Map();
   for (const b of DATA) {
     for (const t of tagsOf(b)) {
@@ -706,26 +1078,274 @@ function buildTagOptions() {
       counts.set(key, cur);
     }
   }
-  const sorted = [...counts.entries()].sort((a, b) => b[1].n - a[1].n);
+  const lu = state.tagLastUsed;
+  return [...counts.entries()].sort((a, b) => {
+    const la = lu[a[0]] || 0, lb = lu[b[0]] || 0;
+    if (la !== lb) return lb - la;   // most-recently-used tag first
+    return b[1].n - a[1].n;          // then most-frequent
+  });
+}
+
+// Build the whole filter dropdown: an editable boolean expression, a save row,
+// the saved-filter chips, and a click-to-insert tag palette (+ include, − exclude).
+function buildTagOptions() {
+  const sorted = tagCountsSorted();
   const menu = document.getElementById("tagMenu");
-  menu.innerHTML = sorted.map(([key, { label, n }]) => `
-    <label><input type="checkbox" value="${escapeHtml(key)}">
-      <span>${escapeHtml(label)}</span><span class="cnt">${n}</span></label>
-  `).join("");
-  menu.querySelectorAll("input").forEach(cb => {
-    cb.checked = state.tags.has(cb.value);
-    cb.addEventListener("change", () => {
-      if (cb.checked) state.tags.add(cb.value);
-      else state.tags.delete(cb.value);
-      updateTagSummary();
-      applyState();
+  menu.innerHTML = `
+    <div class="fbar">
+      <input id="filterExpr" class="fexpr" type="text" autocomplete="off" spellcheck="false"
+             placeholder="e.g. media and not archive">
+      <button id="filterClear" class="fx" type="button" title="Clear filter">×</button>
+    </div>
+    <div id="filterErr" class="ferr" hidden></div>
+    <div class="fsave">
+      <input id="filterName" class="fname" type="text" autocomplete="off" placeholder="name this filter">
+      <button id="filterSaveBtn" class="fsavebtn" type="button">Save</button>
+    </div>
+    <div id="savedRow" class="saved" hidden></div>
+    <div class="fquick">
+      <button id="filterUntagged" class="fquickbtn" type="button">Untagged only <span class="cnt" id="untaggedCount"></span></button>
+    </div>
+    <div class="fdiv">Tags — <b>+</b> include, <b>−</b> exclude</div>
+    <div class="palette">
+      ${sorted.map(([key, { label, n }]) => `
+        <div class="prow" data-tag="${escapeHtml(key)}">
+          <button class="pbtn add" type="button" title="include in filter">+</button>
+          <button class="pbtn ex" type="button" title="exclude in filter">−</button>
+          <span class="pname">${escapeHtml(label)}</span>
+          <span class="cnt">${n}</span>
+        </div>`).join("")}
+    </div>`;
+  wireFilterMenu();
+}
+
+function wireFilterMenu() {
+  const expr = document.getElementById("filterExpr");
+  expr.value = state.filterExpr;
+  let t;
+  expr.addEventListener("input", () => {
+    clearTimeout(t);
+    t = setTimeout(() => setFilterExpr(expr.value), 150);
+  });
+  expr.addEventListener("keydown", e => {
+    e.stopPropagation();
+    if (e.key === "Enter") { clearTimeout(t); setFilterExpr(expr.value); }
+  });
+  document.getElementById("filterClear").addEventListener("click", () => {
+    expr.value = "";
+    setFilterExpr("");
+    expr.focus();
+  });
+  document.getElementById("filterSaveBtn").addEventListener("click", saveCurrentFilter);
+  document.getElementById("filterName").addEventListener("keydown", e => {
+    e.stopPropagation();
+    if (e.key === "Enter") saveCurrentFilter();
+  });
+  // "Untagged only" quick filter: toggle the whole expression to `untagged`.
+  const untaggedN = DATA.filter(b => !state.hidden.has(b.id) && tagsOf(b).length === 0).length;
+  document.getElementById("untaggedCount").textContent = untaggedN;
+  const untaggedBtn = document.getElementById("filterUntagged");
+  untaggedBtn.classList.toggle("on", state.filterExpr.trim().toLowerCase() === "untagged");
+  untaggedBtn.addEventListener("click", () => {
+    const on = state.filterExpr.trim().toLowerCase() === "untagged";
+    const next = on ? "" : "untagged";
+    expr.value = next;
+    setFilterExpr(next);
+  });
+  document.getElementById("tagMenu").querySelectorAll(".prow").forEach(row => {
+    const tag = row.dataset.tag;
+    row.querySelector(".add").addEventListener("click", () => insertTag(tag, false));
+    row.querySelector(".ex").addEventListener("click", () => insertTag(tag, true));
+  });
+  renderSavedFilters();
+}
+
+// A global tag delete/restore only changes which tags are suppressed; push that
+// change to every card's pills, the filter palette, and the timeline. Posts and
+// the ft DB are never modified. Reversible from the Manage-tags modal.
+function applyGlobalTagChange() {
+  saveGlobalRemovedTags();
+  refreshAllTagRows();   // strip/re-add the tag on every card's pills, no media reload
+  buildTagOptions();     // keep the filter palette counts in sync
+  applyState();          // re-filter (an active filter may reference the tag)
+}
+
+function removeTagGlobally(tagKey) {
+  state.globalRemovedTags.add(tagKey.toLowerCase());
+  applyGlobalTagChange();
+}
+
+function restoreTagGlobally(tagKey) {
+  state.globalRemovedTags.delete(tagKey.toLowerCase());
+  applyGlobalTagChange();
+}
+
+// Every tag's post count, INCLUDING globally-deleted ones (so the manager can
+// show what a restore brings back). Per-post removals still count against it.
+function tagInventory() {
+  const counts = new Map();
+  for (const b of DATA) {
+    const perPost = new Set((state.removedTags[b.id] || []).map(t => t.toLowerCase()));
+    const all = state.customTags[b.id]?.length ? b.tags.concat(state.customTags[b.id]) : b.tags;
+    const seen = new Set();
+    for (const t of all) {
+      const k = t.toLowerCase();
+      if (perPost.has(k) || seen.has(k)) continue;
+      seen.add(k);
+      const cur = counts.get(k) || { label: t, n: 0 };
+      cur.n += 1;
+      counts.set(k, cur);
+    }
+  }
+  return [...counts.entries()].sort((a, b) => b[1].n - a[1].n);
+}
+
+// --- Manage-tags modal (two tabs: Active tags to delete, Deleted tags to restore) ---
+let tmTab = "active";
+
+function openTagManager() {
+  tmTab = "active";
+  document.getElementById("tmSearch").value = "";
+  renderTagManager();
+  const bd = document.getElementById("tagManager");
+  bd.hidden = false;
+  document.getElementById("tmSearch").focus();
+}
+
+function closeTagManager() {
+  document.getElementById("tagManager").hidden = true;
+}
+
+function setTagManagerTab(tab) {
+  tmTab = tab;
+  renderTagManager();
+}
+
+function renderTagManager() {
+  const q = (document.getElementById("tmSearch").value || "").trim().toLowerCase();
+  const inv = tagInventory();
+  const active = inv.filter(([key]) => !state.globalRemovedTags.has(key));
+  const deleted = inv.filter(([key]) => state.globalRemovedTags.has(key));
+
+  document.getElementById("tmTabActive").textContent = `Active (${active.length})`;
+  document.getElementById("tmTabDeleted").textContent = `Deleted (${deleted.length})`;
+  document.getElementById("tmTabActive").classList.toggle("on", tmTab === "active");
+  document.getElementById("tmTabDeleted").classList.toggle("on", tmTab === "deleted");
+
+  const base = tmTab === "deleted" ? deleted : active;
+  const rows = base.filter(([key, { label }]) =>
+    !q || key.includes(q) || label.toLowerCase().includes(q));
+
+  document.getElementById("tmSummary").textContent =
+    q ? `${rows.length} of ${base.length} shown` : `${base.length} ${tmTab} tag${base.length === 1 ? "" : "s"}`;
+
+  const list = document.getElementById("tmList");
+  if (!rows.length) {
+    const msg = q
+      ? `No ${tmTab} tags match “${escapeHtml(q)}”.`
+      : (tmTab === "deleted" ? "No deleted tags. Delete one from the Active tab." : "No tags.");
+    list.innerHTML = `<div class="tm-empty">${msg}</div>`;
+    return;
+  }
+  list.innerHTML = rows.map(([key, { label, n }]) => {
+    const isDeleted = tmTab === "deleted";
+    return `<div class="tm-row${isDeleted ? " deleted" : ""}" data-tag="${escapeHtml(key)}">
+      <span class="tm-pill" style="${pillStyle(label)}">${escapeHtml(label)}</span>
+      <span class="tm-cnt">${n} post${n === 1 ? "" : "s"}</span>
+      ${isDeleted
+        ? `<button class="tm-act restore" type="button">Restore</button>`
+        : `<button class="tm-act delete" type="button">Delete</button>`}
+    </div>`;
+  }).join("");
+  list.querySelectorAll(".tm-row").forEach(row => {
+    const tag = row.dataset.tag;
+    const btn = row.querySelector(".tm-act");
+    btn.addEventListener("click", () => {
+      if (btn.classList.contains("delete")) removeTagGlobally(tag);
+      else restoreTagGlobally(tag);
+      renderTagManager();  // the tag leaves this tab; stay put, modal open
+    });
+  });
+}
+
+// Compile the expression; on success filter + persist, on error just flag the
+// input and keep the last valid results (so mid-typing never blanks the list).
+function setFilterExpr(value) {
+  state.filterExpr = value;
+  const { pred, ok, error } = compileFilter(value);
+  const input = document.getElementById("filterExpr");
+  const err = document.getElementById("filterErr");
+  if (ok) {
+    state.filterPred = pred;
+    if (input) input.classList.remove("bad");
+    if (err) err.hidden = true;
+    localStorage.setItem("filterExpr", value);
+    updateTagSummary();
+    const untaggedBtn = document.getElementById("filterUntagged");
+    if (untaggedBtn) untaggedBtn.classList.toggle("on", value.trim().toLowerCase() === "untagged");
+    applyState();
+  } else {
+    if (input) input.classList.add("bad");
+    if (err) { err.hidden = false; err.textContent = error; }
+  }
+}
+
+// Append a tag to the expression (AND-ed); quote names with spaces/specials.
+function insertTag(tag, negate) {
+  const input = document.getElementById("filterExpr");
+  const token = (negate ? "not " : "") + (/[\s()&|!"']/.test(tag) ? `"${tag}"` : tag);
+  const cur = (input.value || "").trim();
+  input.value = cur ? `${cur} and ${token}` : token;
+  setFilterExpr(input.value);
+  input.focus();
+}
+
+function saveSavedFilters() { writeJSON("savedFilters", state.savedFilters); }
+
+function saveCurrentFilter() {
+  const nameInput = document.getElementById("filterName");
+  const name = (nameInput.value || "").trim();
+  const expr = (state.filterExpr || "").trim();
+  if (!name || !expr) return;
+  const existing = state.savedFilters.find(f => f.name.toLowerCase() === name.toLowerCase());
+  if (existing) existing.expr = expr;
+  else state.savedFilters.push({ name, expr });
+  saveSavedFilters();
+  nameInput.value = "";
+  renderSavedFilters();
+}
+
+function renderSavedFilters() {
+  const row = document.getElementById("savedRow");
+  if (!row) return;
+  if (!state.savedFilters.length) { row.hidden = true; row.innerHTML = ""; return; }
+  row.hidden = false;
+  row.innerHTML = state.savedFilters.map((f, i) => `
+    <span class="sf" data-i="${i}">
+      <button class="sfapply" type="button" title="${escapeHtml(f.expr)}">${escapeHtml(f.name)}</button>
+      <button class="sfdel" type="button" title="delete">×</button>
+    </span>`).join("");
+  row.querySelectorAll(".sf").forEach(el => {
+    const i = +el.dataset.i;
+    el.querySelector(".sfapply").addEventListener("click", () => {
+      const input = document.getElementById("filterExpr");
+      input.value = state.savedFilters[i].expr;
+      setFilterExpr(input.value);
+    });
+    el.querySelector(".sfdel").addEventListener("click", () => {
+      state.savedFilters.splice(i, 1);
+      saveSavedFilters();
+      renderSavedFilters();
     });
   });
 }
 
 function updateTagSummary() {
   const el = document.getElementById("tagSummary");
-  el.textContent = state.tags.size === 0 ? "Tags" : `${state.tags.size} tag${state.tags.size > 1 ? "s" : ""}`;
+  const s = (state.filterExpr || "").trim();
+  if (!s) { el.textContent = "Filter"; el.classList.remove("on"); return; }
+  el.textContent = s.length > 22 ? s.slice(0, 21) + "…" : s;
+  el.classList.add("on");
 }
 
 function updateSelBar() {
@@ -738,34 +1358,104 @@ function updateSelBar() {
 
 function beginAddTag(btn) {
   const id = btn.closest("article").dataset.id;
+  const own = new Set(tagsOf(byId.get(id)).map(t => t.toLowerCase()));
+  // Existing tags this bookmark doesn't already have, most-used first.
+  const pool = tagCountsSorted()
+    .map(([key, { label, n }]) => ({ key, label, n }))
+    .filter(t => !own.has(t.key));
+
   const input = document.createElement("input");
   input.className = "taginput";
   input.placeholder = "new tag";
+  input.autocomplete = "off";
   btn.replaceWith(input);
   input.focus();
-  let done = false;
-  const finish = commit => {
+
+  // The suggestion menu lives on <body> with position:fixed so the card's
+  // `content-visibility` paint containment can never clip it.
+  const menu = document.createElement("div");
+  menu.className = "tagsuggest";
+  document.body.appendChild(menu);
+
+  let matches = [], active = -1, done = false;
+
+  const positionMenu = () => {
+    const r = input.getBoundingClientRect();
+    menu.style.minWidth = Math.max(r.width, 170) + "px";
+    menu.style.left = Math.round(Math.min(r.left, innerWidth - menu.offsetWidth - 8)) + "px";
+    const h = menu.offsetHeight;
+    const below = r.bottom + 4;
+    menu.style.top = Math.round(below + h > innerHeight ? Math.max(8, r.top - h - 4) : below) + "px";
+  };
+
+  const highlight = () =>
+    [...menu.children].forEach((el, i) => el.classList.toggle("active", i === active));
+
+  const renderMenu = () => {
+    const q = input.value.trim().toLowerCase();
+    matches = (q ? pool.filter(t => t.key.includes(q)) : pool).slice(0, 8);
+    active = -1;
+    if (!matches.length) { menu.style.display = "none"; return; }
+    menu.style.display = "";
+    menu.innerHTML = matches.map((t, i) =>
+      `<div class="opt" data-i="${i}"><span class="pill" style="${pillStyle(t.label)}">${escapeHtml(t.label)}</span><span class="cnt">${t.n}</span></div>`
+    ).join("");
+    positionMenu();
+  };
+
+  const finish = (commit, valOverride) => {
     if (done) return;
     done = true;
-    const val = (input.value || "").trim();
-    if (commit && val) {
-      const b = DATA.find(x => x.id === id);
-      const existing = new Set(tagsOf(b).map(t => t.toLowerCase()));
-      if (!existing.has(val.toLowerCase())) {
+    menu.remove();
+    window.removeEventListener("scroll", onScroll, true);
+    const val = (valOverride != null ? valOverride : (input.value || "").trim());
+    if (commit && val && !own.has(val.toLowerCase())) {
+      const low = val.toLowerCase();
+      const removed = state.removedTags[id] || [];
+      if (removed.some(t => t.toLowerCase() === low)) {
+        // Re-adding a tag that was removed: just un-suppress it (keeps a
+        // derived tag derived instead of duplicating it as a custom tag).
+        state.removedTags[id] = removed.filter(t => t.toLowerCase() !== low);
+        if (!state.removedTags[id].length) delete state.removedTags[id];
+        saveRemovedTags();
+      } else {
         state.customTags[id] = (state.customTags[id] || []).concat(val);
         saveCustomTags();
-        buildTagOptions();
       }
+      markTagUsed(low);   // float this tag to the top of the dropdown next time
+      buildTagOptions();
     }
-    applyState();
+    refreshTagRow(id);  // redraw just this card's pills (also restores the "+" on cancel)
   };
+
+  const onScroll = () => { if (!done) finish(true); };  // commit & close if the page scrolls
+
+  input.addEventListener("input", renderMenu);
   input.addEventListener("keydown", e => {
     e.stopPropagation();
-    if (e.key === "Enter") finish(true);
-    if (e.key === "Escape") finish(false);
+    if (e.key === "Enter") {
+      finish(true, active >= 0 ? matches[active].label : undefined);
+    } else if (e.key === "Escape") {
+      if (menu.style.display !== "none") menu.style.display = "none";  // 1st Esc: close menu
+      else finish(false);                                             // 2nd Esc: cancel add
+    } else if (e.key === "ArrowDown" && matches.length) {
+      e.preventDefault(); active = (active + 1) % matches.length; highlight();
+    } else if (e.key === "ArrowUp" && matches.length) {
+      e.preventDefault(); active = (active - 1 + matches.length) % matches.length; highlight();
+    }
   });
   input.addEventListener("click", e => e.stopPropagation());
+  // mousedown (fires before the input's blur) so picking a suggestion commits cleanly.
+  menu.addEventListener("mousedown", e => {
+    const opt = e.target.closest(".opt");
+    if (!opt) return;
+    e.preventDefault();
+    finish(true, matches[+opt.dataset.i].label);
+  });
   input.addEventListener("blur", () => finish(true));
+  window.addEventListener("scroll", onScroll, true);
+
+  renderMenu();  // show existing tags immediately on open
 }
 
 function setSelecting(on) {
@@ -797,21 +1487,33 @@ document.getElementById("timeline").addEventListener("click", e => {
   const del = e.target.closest(".del");
   if (del) {
     e.stopPropagation();
-    state.hidden.add(del.closest("article").dataset.id);
+    const art = del.closest("article");
+    state.hidden.add(art.dataset.id);
     saveHidden();
-    applyState();
+    removeArticle(art);
     return;
   }
   const rm = e.target.closest(".rmtag");
   if (rm) {
     e.stopPropagation();
     const pill = rm.closest(".pill");
-    const id = pill.closest("article").dataset.id;
-    state.customTags[id] = (state.customTags[id] || []).filter(t => t !== pill.dataset.tag);
-    if (!state.customTags[id].length) delete state.customTags[id];
-    saveCustomTags();
+    const art = pill.closest("article");
+    const id = art.dataset.id;
+    const tag = pill.dataset.tag;
+    if (pill.dataset.kind === "custom") {
+      // User-added tag: drop it outright so re-adding starts clean.
+      state.customTags[id] = (state.customTags[id] || []).filter(t => t !== tag);
+      if (!state.customTags[id].length) delete state.customTags[id];
+      saveCustomTags();
+    } else {
+      // Derived tag: can't touch the DB, so suppress it via the overlay.
+      state.removedTags[id] = (state.removedTags[id] || []).concat(tag);
+      saveRemovedTags();
+    }
     buildTagOptions();
-    applyState();
+    // Removing a tag can drop the card out of an active tag filter; otherwise just redraw its pills.
+    if (matchesFilters(byId.get(id))) refreshTagRow(id);
+    else removeArticle(art);
     return;
   }
   const add = e.target.closest(".addtag");
@@ -840,9 +1542,12 @@ document.getElementById("timeline").addEventListener("click", e => {
   if (card) window.open(card.dataset.url, "_blank", "noopener");
 });
 
+// Debounce so typing doesn't re-filter+re-render on every keystroke.
+let searchTimer;
 document.getElementById("search").addEventListener("input", e => {
-  state.search = e.target.value.trim();
-  applyState();
+  const v = e.target.value.trim().toLowerCase();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { state.search = v; applyState(); }, 120);
 });
 document.getElementById("sortKey").addEventListener("change", e => {
   state.sortKey = e.target.value;
@@ -854,6 +1559,23 @@ document.getElementById("sortDir").addEventListener("click", () => {
   applyState();
 });
 document.getElementById("selectToggle").addEventListener("click", () => setSelecting(!state.selecting));
+document.getElementById("manageTags").addEventListener("click", openTagManager);
+document.getElementById("tmClose").addEventListener("click", closeTagManager);
+document.getElementById("tmTabActive").addEventListener("click", () => setTagManagerTab("active"));
+document.getElementById("tmTabDeleted").addEventListener("click", () => setTagManagerTab("deleted"));
+document.getElementById("tmSearch").addEventListener("input", renderTagManager);
+document.getElementById("tmSearch").addEventListener("keydown", e => {
+  if (e.key === "Escape") { closeTagManager(); return; }
+  e.stopPropagation();
+});
+document.getElementById("tagManager").addEventListener("click", e => {
+  // Close on the dim backdrop OR the × (delegated, so a click on the button's
+  // text node or a mis-bound direct listener still closes reliably).
+  if (e.target.id === "tagManager" || e.target.closest("#tmClose")) closeTagManager();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !document.getElementById("tagManager").hidden) closeTagManager();
+});
 document.getElementById("selAll").addEventListener("click", () => {
   const allSelected = state.visibleIds.length > 0 &&
     state.visibleIds.every(id => state.selected.has(id));
@@ -865,10 +1587,15 @@ document.getElementById("selAll").addEventListener("click", () => {
 });
 document.getElementById("selCancel").addEventListener("click", () => setSelecting(false));
 document.getElementById("selDelete").addEventListener("click", () => {
-  state.selected.forEach(id => state.hidden.add(id));
+  const gone = state.selected;
+  gone.forEach(id => state.hidden.add(id));
   saveHidden();
+  // Remove the selected cards in place rather than rebuilding the whole timeline.
+  for (const a of [...document.querySelectorAll("article.tweet.selected")]) a.remove();
+  state.visibleIds = state.visibleIds.filter(id => !gone.has(id));
+  setShownCount(state.visibleIds.length);
   setSelecting(false);
-  applyState();
+  if (!state.visibleIds.length) applyState();  // fall back to the empty-state view
 });
 document.getElementById("restoreLink").addEventListener("click", () => {
   state.hidden.clear();
@@ -961,11 +1688,16 @@ if (!syncBtn.hidden) {
 // close tag dropdown when clicking outside
 document.addEventListener("click", e => {
   const dd = document.getElementById("tagDropdown");
-  if (dd.open && !dd.contains(e.target)) dd.open = false;
+  if (!dd.open) return;
+  // A click on a control inside the menu that re-rendered itself (e.g. delete
+  // or restore a tag) leaves e.target detached; that's not an outside click, so
+  // don't close the menu.
+  if (!e.target.isConnected) return;
+  if (!dd.contains(e.target)) dd.open = false;
 });
 
 document.getElementById("totalCount").textContent = DATA.length.toLocaleString();
 buildTagOptions();
 updateRestoreLink();
-applyState();
+setFilterExpr(state.filterExpr);  // compile any saved expression, then render
 </script>
