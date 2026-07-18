@@ -22,6 +22,8 @@ from pathlib import Path
 
 FT_DIR = Path(os.environ.get("OKIEDOKE_DATA", str(Path.home() / ".ft-bookmarks")))
 APP_DIR = Path(__file__).resolve().parent
+INDEX = FT_DIR / "index.html"                    # the built app
+DB = FT_DIR / "bookmarks.db"                      # ft's synced database
 LAST_FULL_SYNC = FT_DIR / "last-full-sync.json"  # last full re-crawl (for deleted-on-X)
 LAST_SYNC = FT_DIR / "last-sync.json"            # last sync of any kind (for the cooldown)
 PORT = 8377
@@ -180,7 +182,29 @@ class Handler(SimpleHTTPRequestHandler):
         pass  # keep the terminal quiet
 
 
+def ensure_built():
+    """First-run bootstrap: build index.html so the server never serves a 404.
+    If there's no synced data yet, point the user at the one-step setup."""
+    if INDEX.exists():
+        return True
+    if not DB.exists():
+        print(
+            f"No bookmarks found in {FT_DIR}.\n"
+            "Run ./setup.sh to sync your X bookmarks and launch, or:\n"
+            "  1. install & sign in to ft:  https://fieldtheory.dev/cli\n"
+            "  2. ft sync\n"
+            "  3. python3 serve.py",
+            file=sys.stderr,
+        )
+        return False
+    print("First run: building the app from your synced bookmarks…")
+    gen = subprocess.run([sys.executable, str(APP_DIR / "generate.py")])
+    return gen.returncode == 0
+
+
 def main():
+    if not ensure_built():
+        sys.exit(1)
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     url = f"http://localhost:{PORT}/"
     print(f"Bookmarks app: {url}  (Ctrl-C to stop)")

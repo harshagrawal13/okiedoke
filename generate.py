@@ -139,7 +139,33 @@ def fmt_date(dt):
     return f"{dt.strftime('%b')} {dt.day}, {dt.year}"
 
 
+def require_data():
+    """Fail early with a friendly message if there's nothing to build from,
+    instead of letting sqlite raise a cryptic 'no such table' error."""
+    hint = (
+        f"\nNo bookmarks found in {FT_DIR}.\n"
+        "  1. Install and sign in to the ft CLI:  https://fieldtheory.dev/cli\n"
+        "  2. Sync your X bookmarks:               ft sync\n"
+        "  3. Build the app again:                 python3 generate.py\n"
+        "     (or just run ./setup.sh, which does all of this for you)\n"
+    )
+    if not DB_PATH.exists():
+        raise SystemExit(hint)
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        table = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='bookmarks'"
+        ).fetchone()
+    except sqlite3.DatabaseError:
+        table = None
+    finally:
+        conn.close()
+    if not table:
+        raise SystemExit(hint)
+
+
 def main():
+    require_data()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT * FROM bookmarks ORDER BY posted_at DESC").fetchall()
