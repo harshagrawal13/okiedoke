@@ -121,9 +121,9 @@
     border-radius: 16px;
     box-shadow: 0 0 15px rgba(101, 119, 134, 0.2), 0 0 5px rgba(101, 119, 134, 0.15);
     padding: 8px 0;
-    max-height: 320px;
+    max-height: 420px;
     overflow-y: auto;
-    min-width: 240px;
+    min-width: 300px;
   }
   .tagmenu label {
     display: flex;
@@ -137,6 +137,59 @@
   .tagmenu label:hover { background: var(--hover); }
   .tagmenu .cnt { color: var(--text-2); margin-left: auto; font-size: 12.5px; }
   .tagmenu input { accent-color: var(--blue); }
+
+  /* boolean filter menu */
+  #tagSummary.on { color: var(--blue); max-width: 190px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .fbar { display: flex; align-items: center; gap: 6px; padding: 10px 12px 6px; }
+  .fexpr {
+    flex: 1; min-width: 0; font: inherit; font-size: 13.5px; color: var(--text);
+    border: 1px solid var(--border-media); border-radius: 9px; padding: 7px 10px; outline: none;
+  }
+  .fexpr:focus { border-color: var(--blue); }
+  .fexpr.bad { border-color: #f4212e; }
+  .fx {
+    flex: none; border: none; background: var(--chip-bg); color: var(--text-2);
+    border-radius: 9999px; width: 24px; height: 24px; cursor: pointer; font-size: 15px; line-height: 1;
+  }
+  .fx:hover { background: var(--hover); }
+  .ferr { color: #f4212e; font-size: 12px; padding: 0 13px 4px; }
+  .fsave { display: flex; gap: 6px; padding: 2px 12px 8px; }
+  .fname {
+    flex: 1; min-width: 0; font: inherit; font-size: 13px; color: var(--text);
+    border: 1px solid var(--border-media); border-radius: 9px; padding: 6px 9px; outline: none;
+  }
+  .fname:focus { border-color: var(--blue); }
+  .fsavebtn {
+    flex: none; font: inherit; font-size: 13px; font-weight: 700; color: #fff;
+    background: var(--blue); border: none; border-radius: 9999px; padding: 6px 14px; cursor: pointer;
+  }
+  .fsavebtn:hover { background: #1a8cd8; }
+  .saved { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px; }
+  .sf { display: inline-flex; align-items: center; background: var(--chip-bg); border-radius: 9999px; }
+  .sfapply {
+    font: inherit; font-size: 12.5px; font-weight: 700; color: var(--text);
+    background: none; border: none; padding: 5px 4px 5px 11px; cursor: pointer;
+  }
+  .sfdel {
+    background: none; border: none; color: var(--text-2); cursor: pointer;
+    padding: 5px 9px 5px 3px; font-size: 13px; line-height: 1;
+  }
+  .sfdel:hover { color: #f4212e; }
+  .fdiv { font-size: 12px; color: var(--text-2); padding: 6px 14px; border-top: 1px solid var(--border); }
+  .fdiv b { color: var(--text); font-weight: 700; }
+  .palette { max-height: 220px; overflow-y: auto; }
+  .prow { display: flex; align-items: center; gap: 8px; padding: 5px 14px; white-space: nowrap; }
+  .prow:hover { background: var(--hover); }
+  .pbtn {
+    flex: none; font: inherit; font-weight: 800; font-size: 13px; line-height: 1;
+    width: 22px; height: 22px; border-radius: 9999px; cursor: pointer;
+    border: 1px solid var(--border-media); background: #fff; color: var(--text-2);
+  }
+  .pbtn.add:hover { background: #e8f5fe; border-color: var(--blue); color: var(--blue); }
+  .pbtn.ex:hover { background: #fdeaec; border-color: #f4212e; color: #f4212e; }
+  .pname { font-size: 14px; }
+  .palette .cnt { color: var(--text-2); margin-left: auto; font-size: 12.5px; }
 
   /* ---- tweet card ---- */
   article.tweet {
@@ -472,7 +525,7 @@
         <input id="search" type="text" placeholder="Search bookmarks" autocomplete="off">
       </div>
       <details class="tagdrop" id="tagDropdown">
-        <summary class="chip" id="tagSummary">Tags</summary>
+        <summary class="chip" id="tagSummary">Filter</summary>
         <div class="tagmenu" id="tagMenu"></div>
       </details>
       <select class="chip" id="sortKey">
@@ -518,9 +571,20 @@ function loadCustomTags() {
   }
 }
 
+function loadSavedFilters() {
+  try {
+    const v = JSON.parse(localStorage.getItem("savedFilters") || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
 const state = {
   search: "",
-  tags: new Set(),
+  filterExpr: localStorage.getItem("filterExpr") || "",
+  filterPred: null,           // compiled predicate for filterExpr (null = match all)
+  savedFilters: loadSavedFilters(),
   sortKey: "date",
   sortDir: "desc",
   hidden: loadHidden(),
@@ -746,9 +810,88 @@ function haystack(b) {
 
 // Does this bookmark pass the current hidden/tag/search filters? Shared by the
 // full re-render (applyState) and the surgical updates so they never disagree.
+// --- Boolean tag-filter expression: `and` / `or` / `not` / parentheses over
+// tag names (bare, or "quoted" for names with spaces). Compiles the string to
+// a predicate over a bookmark's lowercased tag Set. Empty string = match all. ---
+function tokenizeFilter(src) {
+  const toks = [];
+  let i = 0;
+  const space = c => c === " " || c === "\t" || c === "\n";
+  const stop = c => space(c) || "()&|!\"'".includes(c);
+  while (i < src.length) {
+    const c = src[i];
+    if (space(c)) { i++; continue; }
+    if (c === "(") { toks.push({ t: "(" }); i++; continue; }
+    if (c === ")") { toks.push({ t: ")" }); i++; continue; }
+    if (c === "!") { toks.push({ t: "not" }); i++; continue; }
+    if (c === "&") { i++; if (src[i] === "&") i++; toks.push({ t: "and" }); continue; }
+    if (c === "|") { i++; if (src[i] === "|") i++; toks.push({ t: "or" }); continue; }
+    if (c === '"' || c === "'") {
+      const q = c; i++; let s = "";
+      while (i < src.length && src[i] !== q) s += src[i++];
+      if (i >= src.length) throw new Error("unclosed quote");
+      i++; toks.push({ t: "tag", v: s.toLowerCase() }); continue;
+    }
+    let s = "";
+    while (i < src.length && !stop(src[i])) s += src[i++];
+    const low = s.toLowerCase();
+    if (low === "and") toks.push({ t: "and" });
+    else if (low === "or") toks.push({ t: "or" });
+    else if (low === "not") toks.push({ t: "not" });
+    else toks.push({ t: "tag", v: low });
+  }
+  return toks;
+}
+
+function parseFilter(src) {
+  const toks = tokenizeFilter(src);
+  let p = 0;
+  const peek = () => toks[p];
+  const atomStart = tk => tk && (tk.t === "tag" || tk.t === "(" || tk.t === "not");
+  function pOr() {
+    let n = pAnd();
+    while (peek() && peek().t === "or") { p++; const r = pAnd(), l = n; n = s => l(s) || r(s); }
+    return n;
+  }
+  function pAnd() {
+    let n = pNot();
+    // explicit `and`, or two adjacent atoms => implicit AND
+    while (peek() && (peek().t === "and" || atomStart(peek()))) {
+      if (peek().t === "and") p++;
+      const r = pNot(), l = n; n = s => l(s) && r(s);
+    }
+    return n;
+  }
+  function pNot() {
+    if (peek() && peek().t === "not") { p++; const r = pNot(); return s => !r(s); }
+    return pAtom();
+  }
+  function pAtom() {
+    const tk = peek();
+    if (!tk) throw new Error("unexpected end of filter");
+    if (tk.t === "(") {
+      p++; const n = pOr();
+      if (!peek() || peek().t !== ")") throw new Error("missing )");
+      p++; return n;
+    }
+    if (tk.t === "tag") { p++; return s => s.has(tk.v); }
+    throw new Error("unexpected '" + tk.t + "'");
+  }
+  const n = pOr();
+  if (p < toks.length) throw new Error("unexpected '" + peek().t + "'");
+  return n;
+}
+
+function compileFilter(expr) {
+  const s = (expr || "").trim();
+  if (!s) return { pred: null, ok: true };
+  try { return { pred: parseFilter(s), ok: true }; }
+  catch (e) { return { pred: null, ok: false, error: e.message }; }
+}
+
 function matchesFilters(b) {
   if (state.hidden.has(b.id)) return false;
-  if (state.tags.size > 0 && !tagsOf(b).some(t => state.tags.has(t.toLowerCase()))) return false;
+  if (state.filterPred && !state.filterPred(new Set(tagsOf(b).map(t => t.toLowerCase())))) return false;
   if (state.search) {
     const q = state.search;
     return haystack(b).includes(q) || tagsOf(b).some(t => t.toLowerCase().includes(q));
@@ -807,27 +950,144 @@ function tagCountsSorted() {
   return [...counts.entries()].sort((a, b) => b[1].n - a[1].n);
 }
 
+// Build the whole filter dropdown: an editable boolean expression, a save row,
+// the saved-filter chips, and a click-to-insert tag palette (+ include, − exclude).
 function buildTagOptions() {
   const sorted = tagCountsSorted();
   const menu = document.getElementById("tagMenu");
-  menu.innerHTML = sorted.map(([key, { label, n }]) => `
-    <label><input type="checkbox" value="${escapeHtml(key)}">
-      <span>${escapeHtml(label)}</span><span class="cnt">${n}</span></label>
-  `).join("");
-  menu.querySelectorAll("input").forEach(cb => {
-    cb.checked = state.tags.has(cb.value);
-    cb.addEventListener("change", () => {
-      if (cb.checked) state.tags.add(cb.value);
-      else state.tags.delete(cb.value);
-      updateTagSummary();
-      applyState();
+  menu.innerHTML = `
+    <div class="fbar">
+      <input id="filterExpr" class="fexpr" type="text" autocomplete="off" spellcheck="false"
+             placeholder="e.g. media and not archive">
+      <button id="filterClear" class="fx" type="button" title="Clear filter">×</button>
+    </div>
+    <div id="filterErr" class="ferr" hidden></div>
+    <div class="fsave">
+      <input id="filterName" class="fname" type="text" autocomplete="off" placeholder="name this filter">
+      <button id="filterSaveBtn" class="fsavebtn" type="button">Save</button>
+    </div>
+    <div id="savedRow" class="saved" hidden></div>
+    <div class="fdiv">Tags — <b>+</b> include, <b>−</b> exclude</div>
+    <div class="palette">
+      ${sorted.map(([key, { label, n }]) => `
+        <div class="prow" data-tag="${escapeHtml(key)}">
+          <button class="pbtn add" type="button" title="include">+</button>
+          <button class="pbtn ex" type="button" title="exclude">−</button>
+          <span class="pname">${escapeHtml(label)}</span>
+          <span class="cnt">${n}</span>
+        </div>`).join("")}
+    </div>`;
+  wireFilterMenu();
+}
+
+function wireFilterMenu() {
+  const expr = document.getElementById("filterExpr");
+  expr.value = state.filterExpr;
+  let t;
+  expr.addEventListener("input", () => {
+    clearTimeout(t);
+    t = setTimeout(() => setFilterExpr(expr.value), 150);
+  });
+  expr.addEventListener("keydown", e => {
+    e.stopPropagation();
+    if (e.key === "Enter") { clearTimeout(t); setFilterExpr(expr.value); }
+  });
+  document.getElementById("filterClear").addEventListener("click", () => {
+    expr.value = "";
+    setFilterExpr("");
+    expr.focus();
+  });
+  document.getElementById("filterSaveBtn").addEventListener("click", saveCurrentFilter);
+  document.getElementById("filterName").addEventListener("keydown", e => {
+    e.stopPropagation();
+    if (e.key === "Enter") saveCurrentFilter();
+  });
+  document.getElementById("tagMenu").querySelectorAll(".prow").forEach(row => {
+    const tag = row.dataset.tag;
+    row.querySelector(".add").addEventListener("click", () => insertTag(tag, false));
+    row.querySelector(".ex").addEventListener("click", () => insertTag(tag, true));
+  });
+  renderSavedFilters();
+}
+
+// Compile the expression; on success filter + persist, on error just flag the
+// input and keep the last valid results (so mid-typing never blanks the list).
+function setFilterExpr(value) {
+  state.filterExpr = value;
+  const { pred, ok, error } = compileFilter(value);
+  const input = document.getElementById("filterExpr");
+  const err = document.getElementById("filterErr");
+  if (ok) {
+    state.filterPred = pred;
+    if (input) input.classList.remove("bad");
+    if (err) err.hidden = true;
+    localStorage.setItem("filterExpr", value);
+    updateTagSummary();
+    applyState();
+  } else {
+    if (input) input.classList.add("bad");
+    if (err) { err.hidden = false; err.textContent = error; }
+  }
+}
+
+// Append a tag to the expression (AND-ed); quote names with spaces/specials.
+function insertTag(tag, negate) {
+  const input = document.getElementById("filterExpr");
+  const token = (negate ? "not " : "") + (/[\s()&|!"']/.test(tag) ? `"${tag}"` : tag);
+  const cur = (input.value || "").trim();
+  input.value = cur ? `${cur} and ${token}` : token;
+  setFilterExpr(input.value);
+  input.focus();
+}
+
+function saveSavedFilters() {
+  localStorage.setItem("savedFilters", JSON.stringify(state.savedFilters));
+}
+
+function saveCurrentFilter() {
+  const nameInput = document.getElementById("filterName");
+  const name = (nameInput.value || "").trim();
+  const expr = (state.filterExpr || "").trim();
+  if (!name || !expr) return;
+  const existing = state.savedFilters.find(f => f.name.toLowerCase() === name.toLowerCase());
+  if (existing) existing.expr = expr;
+  else state.savedFilters.push({ name, expr });
+  saveSavedFilters();
+  nameInput.value = "";
+  renderSavedFilters();
+}
+
+function renderSavedFilters() {
+  const row = document.getElementById("savedRow");
+  if (!row) return;
+  if (!state.savedFilters.length) { row.hidden = true; row.innerHTML = ""; return; }
+  row.hidden = false;
+  row.innerHTML = state.savedFilters.map((f, i) => `
+    <span class="sf" data-i="${i}">
+      <button class="sfapply" type="button" title="${escapeHtml(f.expr)}">${escapeHtml(f.name)}</button>
+      <button class="sfdel" type="button" title="delete">×</button>
+    </span>`).join("");
+  row.querySelectorAll(".sf").forEach(el => {
+    const i = +el.dataset.i;
+    el.querySelector(".sfapply").addEventListener("click", () => {
+      const input = document.getElementById("filterExpr");
+      input.value = state.savedFilters[i].expr;
+      setFilterExpr(input.value);
+    });
+    el.querySelector(".sfdel").addEventListener("click", () => {
+      state.savedFilters.splice(i, 1);
+      saveSavedFilters();
+      renderSavedFilters();
     });
   });
 }
 
 function updateTagSummary() {
   const el = document.getElementById("tagSummary");
-  el.textContent = state.tags.size === 0 ? "Tags" : `${state.tags.size} tag${state.tags.size > 1 ? "s" : ""}`;
+  const s = (state.filterExpr || "").trim();
+  if (!s) { el.textContent = "Filter"; el.classList.remove("on"); return; }
+  el.textContent = s.length > 22 ? s.slice(0, 21) + "…" : s;
+  el.classList.add("on");
 }
 
 function updateSelBar() {
@@ -1140,5 +1400,5 @@ document.addEventListener("click", e => {
 document.getElementById("totalCount").textContent = DATA.length.toLocaleString();
 buildTagOptions();
 updateRestoreLink();
-applyState();
+setFilterExpr(state.filterExpr);  // compile any saved expression, then render
 </script>
