@@ -176,6 +176,16 @@
     padding: 5px 9px 5px 3px; font-size: 13px; line-height: 1;
   }
   .sfdel:hover { color: #f4212e; }
+  .fquick { padding: 0 12px 8px; }
+  .fquickbtn {
+    font: inherit; font-size: 13px; font-weight: 700; color: var(--text);
+    background: var(--chip-bg); border: 1px solid transparent; border-radius: 9999px;
+    padding: 6px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .fquickbtn:hover { background: var(--hover); }
+  .fquickbtn.on { background: #e8f5fe; border-color: var(--blue); color: var(--blue); }
+  .fquickbtn .cnt { color: var(--text-2); font-size: 12.5px; }
+  .fquickbtn.on .cnt { color: var(--blue); }
   .fdiv { font-size: 12px; color: var(--text-2); padding: 6px 14px; border-top: 1px solid var(--border); }
   .fdiv b { color: var(--text); font-weight: 700; }
   .palette { max-height: 220px; overflow-y: auto; }
@@ -1018,7 +1028,12 @@ function parseFilter(src) {
       if (!peek() || peek().t !== ")") throw new Error("missing )");
       p++; return n;
     }
-    if (tk.t === "tag") { p++; return s => s.has(tk.v); }
+    if (tk.t === "tag") {
+      p++;
+      // Reserved keyword: "untagged" matches bookmarks with no (visible) tags.
+      if (tk.v === "untagged") return s => s.size === 0;
+      return s => s.has(tk.v);
+    }
     throw new Error("unexpected '" + tk.t + "'");
   }
   const n = pOr();
@@ -1126,6 +1141,9 @@ function buildTagOptions() {
       <button id="filterSaveBtn" class="fsavebtn" type="button">Save</button>
     </div>
     <div id="savedRow" class="saved" hidden></div>
+    <div class="fquick">
+      <button id="filterUntagged" class="fquickbtn" type="button">Untagged only <span class="cnt" id="untaggedCount"></span></button>
+    </div>
     <div class="fdiv">Tags — <b>+</b> include, <b>−</b> exclude</div>
     <div class="palette">
       ${sorted.map(([key, { label, n }]) => `
@@ -1160,6 +1178,17 @@ function wireFilterMenu() {
   document.getElementById("filterName").addEventListener("keydown", e => {
     e.stopPropagation();
     if (e.key === "Enter") saveCurrentFilter();
+  });
+  // "Untagged only" quick filter: toggle the whole expression to `untagged`.
+  const untaggedN = DATA.filter(b => !state.hidden.has(b.id) && tagsOf(b).length === 0).length;
+  document.getElementById("untaggedCount").textContent = untaggedN;
+  const untaggedBtn = document.getElementById("filterUntagged");
+  untaggedBtn.classList.toggle("on", state.filterExpr.trim().toLowerCase() === "untagged");
+  untaggedBtn.addEventListener("click", () => {
+    const on = state.filterExpr.trim().toLowerCase() === "untagged";
+    const next = on ? "" : "untagged";
+    expr.value = next;
+    setFilterExpr(next);
   });
   document.getElementById("tagMenu").querySelectorAll(".prow").forEach(row => {
     const tag = row.dataset.tag;
@@ -1290,6 +1319,8 @@ function setFilterExpr(value) {
     if (err) err.hidden = true;
     localStorage.setItem("filterExpr", value);
     updateTagSummary();
+    const untaggedBtn = document.getElementById("filterUntagged");
+    if (untaggedBtn) untaggedBtn.classList.toggle("on", value.trim().toLowerCase() === "untagged");
     applyState();
   } else {
     if (input) input.classList.add("bad");
