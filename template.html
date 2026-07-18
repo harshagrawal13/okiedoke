@@ -190,20 +190,55 @@
   .pbtn.ex:hover { background: #fdeaec; border-color: #f4212e; color: #f4212e; }
   .pname { font-size: 14px; }
   .palette .cnt { color: var(--text-2); margin-left: auto; font-size: 12.5px; }
-  .pbtn.del {
-    border: none; background: none; color: var(--text-2); width: 24px; height: 24px;
-    margin-left: 2px; opacity: 0; padding: 0; display: flex; align-items: center; justify-content: center;
+
+  /* ---- manage-tags modal ---- */
+  .tm-backdrop {
+    position: fixed; inset: 0; z-index: 60;
+    background: rgba(15, 20, 25, 0.4);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 6vh 16px;
   }
-  .prow:hover .pbtn.del { opacity: 0.6; }
-  .pbtn.del:hover { opacity: 1; color: #f4212e; background: #fdeaec; }
-  .pbtn.del svg { width: 14px; height: 14px; fill: currentColor; display: block; }
-  .removed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 12px 8px; }
-  .rmlbl { font-size: 11.5px; color: var(--text-2); width: 100%; }
-  .rtag {
-    font: inherit; font-size: 12.5px; font-weight: 700; color: #f4212e;
-    background: #fdeaec; border: none; border-radius: 9999px; padding: 5px 11px; cursor: pointer;
+  .tm {
+    background: #fff; border-radius: 18px; width: 100%; max-width: 520px;
+    max-height: 88vh; display: flex; flex-direction: column;
+    box-shadow: 0 0 24px rgba(101, 119, 134, 0.35);
+    overflow: hidden;
   }
-  .rtag:hover { background: #fbd6da; }
+  .tm-head { display: flex; align-items: center; padding: 16px 18px 10px; }
+  .tm-head h2 { font-size: 20px; font-weight: 800; }
+  .tm-x {
+    margin-left: auto; border: none; background: var(--chip-bg); color: var(--text);
+    width: 32px; height: 32px; border-radius: 9999px; cursor: pointer; font-size: 20px; line-height: 1;
+  }
+  .tm-x:hover { background: var(--hover); }
+  .tm-note { padding: 0 18px 10px; font-size: 13px; color: var(--text-2); }
+  .tm-search {
+    margin: 0 18px 8px; font: inherit; font-size: 15px; color: var(--text);
+    border: 1px solid var(--border-media); border-radius: 10px; padding: 9px 12px; outline: none;
+  }
+  .tm-search:focus { border-color: var(--blue); }
+  .tm-summary { padding: 0 18px 8px; font-size: 12.5px; color: var(--text-2); }
+  .tm-list { overflow-y: auto; padding: 0 8px 12px; }
+  .tm-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 10px;
+  }
+  .tm-row:hover { background: var(--hover); }
+  .tm-row.deleted .tm-pill { opacity: 0.5; text-decoration: line-through; }
+  .tm-pill {
+    font-size: 13.5px; font-weight: 600; border-radius: 9999px; padding: 4px 12px;
+    max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .tm-cnt { font-size: 12.5px; color: var(--text-2); margin-left: auto; white-space: nowrap; }
+  .tm-act {
+    font: inherit; font-size: 13px; font-weight: 700; border-radius: 9999px;
+    padding: 6px 14px; cursor: pointer; border: 1px solid var(--border-media); white-space: nowrap;
+  }
+  .tm-act.delete { background: #fff; color: #f4212e; border-color: #f4212e; }
+  .tm-act.delete:hover { background: #fdeaec; }
+  .tm-act.restore { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .tm-act.restore:hover { background: #1a8cd8; }
+  .tm-empty { padding: 24px 18px; text-align: center; color: var(--text-2); font-size: 14px; }
 
   /* ---- tweet card ---- */
   article.tweet {
@@ -550,6 +585,7 @@
       </select>
       <button class="chip" id="sortDir" title="Toggle sort direction">↓</button>
       <button class="chip" id="selectToggle">Select</button>
+      <button class="chip" id="manageTags" title="Delete or restore tags">Manage tags</button>
       <button class="chip" id="syncBtn" hidden>Sync</button>
       <span class="restore" id="restoreLink" hidden></span>
       <span class="shown"><span id="shownCount">0</span> shown</span>
@@ -557,6 +593,20 @@
   </div>
 
   <div id="timeline"></div>
+
+  <!-- Manage-tags modal: delete a tag from all posts, or restore a deleted one. -->
+  <div id="tagManager" class="tm-backdrop" hidden>
+    <div class="tm" role="dialog" aria-label="Manage tags" aria-modal="true">
+      <div class="tm-head">
+        <h2>Manage tags</h2>
+        <button id="tmClose" class="tm-x" type="button" title="Close">×</button>
+      </div>
+      <p class="tm-note">Deleting a tag removes it from every post (the posts and your synced data are never touched). Restore it any time.</p>
+      <input id="tmSearch" class="tm-search" type="text" autocomplete="off" placeholder="Search tags">
+      <div id="tmSummary" class="tm-summary"></div>
+      <div id="tmList" class="tm-list"></div>
+    </div>
+  </div>
 
   <div class="selbar">
     <span class="selcount"><span id="selCount">0</span> selected</span>
@@ -1030,8 +1080,7 @@ function buildTagOptions() {
       <button id="filterSaveBtn" class="fsavebtn" type="button">Save</button>
     </div>
     <div id="savedRow" class="saved" hidden></div>
-    <div id="removedRow" class="removed" hidden></div>
-    <div class="fdiv">Tags — <b>+</b> include, <b>−</b> exclude, <b>🗑</b> delete from all</div>
+    <div class="fdiv">Tags — <b>+</b> include, <b>−</b> exclude</div>
     <div class="palette">
       ${sorted.map(([key, { label, n }]) => `
         <div class="prow" data-tag="${escapeHtml(key)}">
@@ -1039,7 +1088,6 @@ function buildTagOptions() {
           <button class="pbtn ex" type="button" title="exclude in filter">−</button>
           <span class="pname">${escapeHtml(label)}</span>
           <span class="cnt">${n}</span>
-          <button class="pbtn del" type="button" title="Delete this tag from all posts">${ICONS.trash}</button>
         </div>`).join("")}
     </div>`;
   wireFilterMenu();
@@ -1071,46 +1119,97 @@ function wireFilterMenu() {
     const tag = row.dataset.tag;
     row.querySelector(".add").addEventListener("click", () => insertTag(tag, false));
     row.querySelector(".ex").addEventListener("click", () => insertTag(tag, true));
-    row.querySelector(".del").addEventListener("click", () => removeTagGlobally(tag));
   });
   renderSavedFilters();
-  renderRemovedTags();
 }
 
-// Delete a tag from every post at once (suppress it everywhere). Reversible via
-// the "Deleted tags" restore row; posts and the ft DB are never modified.
-function removeTagGlobally(tagKey) {
-  const key = tagKey.toLowerCase();
-  state.globalRemovedTags.add(key);
+// A global tag delete/restore only changes which tags are suppressed; push that
+// change to every card's pills, the filter palette, and the timeline. Posts and
+// the ft DB are never modified. Reversible from the Manage-tags modal.
+function applyGlobalTagChange() {
   saveGlobalRemovedTags();
-  refreshAllTagRows();   // strip the tag from every card's pills, no media reload
-  // Surgically drop just this palette row (deleting one tag doesn't change any
-  // other tag's count) so the open dropdown keeps its scroll position instead
-  // of rebuilding and jumping to the top.
-  const row = document.querySelector('#tagMenu .prow[data-tag="' + CSS.escape(key) + '"]');
-  if (row) row.remove();
-  renderRemovedTags();   // restore row now lists it
+  refreshAllTagRows();   // strip/re-add the tag on every card's pills, no media reload
+  buildTagOptions();     // keep the filter palette counts in sync
   applyState();          // re-filter (an active filter may reference the tag)
+}
+
+function removeTagGlobally(tagKey) {
+  state.globalRemovedTags.add(tagKey.toLowerCase());
+  applyGlobalTagChange();
 }
 
 function restoreTagGlobally(tagKey) {
   state.globalRemovedTags.delete(tagKey.toLowerCase());
-  saveGlobalRemovedTags();
-  refreshAllTagRows();
-  buildTagOptions();
-  applyState();
+  applyGlobalTagChange();
 }
 
-function renderRemovedTags() {
-  const row = document.getElementById("removedRow");
-  if (!row) return;
-  const arr = [...state.globalRemovedTags];
-  if (!arr.length) { row.hidden = true; row.innerHTML = ""; return; }
-  row.hidden = false;
-  row.innerHTML = `<span class="rmlbl">Deleted everywhere — click to restore:</span>` +
-    arr.map(t => `<button class="rtag" type="button" data-tag="${escapeHtml(t)}" title="Restore this tag">${escapeHtml(t)} ↺</button>`).join("");
-  row.querySelectorAll(".rtag").forEach(ch =>
-    ch.addEventListener("click", () => restoreTagGlobally(ch.dataset.tag)));
+// Every tag's post count, INCLUDING globally-deleted ones (so the manager can
+// show what a restore brings back). Per-post removals still count against it.
+function tagInventory() {
+  const counts = new Map();
+  for (const b of DATA) {
+    const perPost = new Set((state.removedTags[b.id] || []).map(t => t.toLowerCase()));
+    const all = state.customTags[b.id]?.length ? b.tags.concat(state.customTags[b.id]) : b.tags;
+    const seen = new Set();
+    for (const t of all) {
+      const k = t.toLowerCase();
+      if (perPost.has(k) || seen.has(k)) continue;
+      seen.add(k);
+      const cur = counts.get(k) || { label: t, n: 0 };
+      cur.n += 1;
+      counts.set(k, cur);
+    }
+  }
+  return [...counts.entries()].sort((a, b) => b[1].n - a[1].n);
+}
+
+// --- Manage-tags modal ---
+function openTagManager() {
+  document.getElementById("tmSearch").value = "";
+  renderTagManager();
+  const bd = document.getElementById("tagManager");
+  bd.hidden = false;
+  document.getElementById("tmSearch").focus();
+}
+
+function closeTagManager() {
+  document.getElementById("tagManager").hidden = true;
+}
+
+function renderTagManager() {
+  const q = (document.getElementById("tmSearch").value || "").trim().toLowerCase();
+  const inv = tagInventory().filter(([key, { label }]) =>
+    !q || key.includes(q) || label.toLowerCase().includes(q));
+  const deletedCount = inv.filter(([key]) => state.globalRemovedTags.has(key)).length;
+
+  const summary = document.getElementById("tmSummary");
+  summary.textContent = `${inv.length} tag${inv.length === 1 ? "" : "s"}` +
+    (deletedCount ? ` · ${deletedCount} deleted` : "");
+
+  const list = document.getElementById("tmList");
+  if (!inv.length) {
+    list.innerHTML = `<div class="tm-empty">No tags match “${escapeHtml(q)}”.</div>`;
+    return;
+  }
+  list.innerHTML = inv.map(([key, { label, n }]) => {
+    const deleted = state.globalRemovedTags.has(key);
+    return `<div class="tm-row${deleted ? " deleted" : ""}" data-tag="${escapeHtml(key)}">
+      <span class="tm-pill" style="${pillStyle(label)}">${escapeHtml(label)}</span>
+      <span class="tm-cnt">${n} post${n === 1 ? "" : "s"}</span>
+      ${deleted
+        ? `<button class="tm-act restore" type="button">Restore</button>`
+        : `<button class="tm-act delete" type="button">Delete</button>`}
+    </div>`;
+  }).join("");
+  list.querySelectorAll(".tm-row").forEach(row => {
+    const tag = row.dataset.tag;
+    const btn = row.querySelector(".tm-act");
+    btn.addEventListener("click", () => {
+      if (btn.classList.contains("delete")) removeTagGlobally(tag);
+      else restoreTagGlobally(tag);
+      renderTagManager();  // reflect the change in place, keeping the modal open
+    });
+  });
 }
 
 // Compile the expression; on success filter + persist, on error just flag the
@@ -1403,6 +1502,19 @@ document.getElementById("sortDir").addEventListener("click", () => {
   applyState();
 });
 document.getElementById("selectToggle").addEventListener("click", () => setSelecting(!state.selecting));
+document.getElementById("manageTags").addEventListener("click", openTagManager);
+document.getElementById("tmClose").addEventListener("click", closeTagManager);
+document.getElementById("tmSearch").addEventListener("input", renderTagManager);
+document.getElementById("tmSearch").addEventListener("keydown", e => {
+  if (e.key === "Escape") { closeTagManager(); return; }
+  e.stopPropagation();
+});
+document.getElementById("tagManager").addEventListener("click", e => {
+  if (e.target.id === "tagManager") closeTagManager();  // click the dim backdrop to close
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !document.getElementById("tagManager").hidden) closeTagManager();
+});
 document.getElementById("selAll").addEventListener("click", () => {
   const allSelected = state.visibleIds.length > 0 &&
     state.visibleIds.every(id => state.selected.has(id));
