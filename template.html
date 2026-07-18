@@ -647,96 +647,45 @@
 <script>
 const DATA = /*__BOOKMARKS_DATA__*/[];
 
-function loadHidden() {
+// All persisted UI state is JSON under a localStorage key: parse-with-fallback
+// on read, JSON on write. Nothing here ever touches the ft database.
+function readJSON(key, fallback) {
   try {
-    return new Set(JSON.parse(localStorage.getItem("hiddenBookmarks") || "[]"));
+    const v = JSON.parse(localStorage.getItem(key));
+    return v == null ? fallback : v;
   } catch {
-    return new Set();
+    return fallback;
   }
 }
-
-function loadCustomTags() {
-  try {
-    return JSON.parse(localStorage.getItem("customTags") || "{}");
-  } catch {
-    return {};
-  }
+function writeJSON(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
 }
 
-function loadSavedFilters() {
-  try {
-    const v = JSON.parse(localStorage.getItem("savedFilters") || "[]");
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
-}
-
-// Per-post overlay suppressing specific tags (derived or custom) by name.
-// LocalStorage-only, like hiddenBookmarks — the ft DB is never mutated, and
-// derived tags that regenerate on the next sync stay suppressed by name.
-function loadRemovedTags() {
-  try {
-    const v = JSON.parse(localStorage.getItem("removedTags") || "{}");
-    return v && typeof v === "object" ? v : {};
-  } catch {
-    return {};
-  }
-}
-
-// Tags deleted everywhere (from all posts at once). Also localStorage-only.
-function loadGlobalRemovedTags() {
-  try {
-    const v = JSON.parse(localStorage.getItem("globalRemovedTags") || "[]");
-    return new Set(Array.isArray(v) ? v.map(t => String(t).toLowerCase()) : []);
-  } catch {
-    return new Set();
-  }
-}
-
-// { tagLowercase: epochMs } — when each tag was last applied to a post, so the
-// tag dropdown can surface most-recently-used tags first.
-function loadTagLastUsed() {
-  try {
-    const v = JSON.parse(localStorage.getItem("tagLastUsed") || "{}");
-    return v && typeof v === "object" ? v : {};
-  } catch {
-    return {};
-  }
-}
-
+// Overlays that hide/annotate bookmarks and tags without ever mutating the ft
+// DB: `hidden` = deleted bookmarks; `removedTags` = per-post tag removals;
+// `globalRemovedTags` = tags deleted from every post; `tagLastUsed` = when each
+// tag was last applied (drives most-recently-used ordering in the dropdown).
 const state = {
   search: "",
   filterExpr: localStorage.getItem("filterExpr") || "",
   filterPred: null,           // compiled predicate for filterExpr (null = match all)
-  savedFilters: loadSavedFilters(),
+  savedFilters: readJSON("savedFilters", []),
   sortKey: "date",
   sortDir: "desc",
-  hidden: loadHidden(),
-  customTags: loadCustomTags(),
-  removedTags: loadRemovedTags(),
-  globalRemovedTags: loadGlobalRemovedTags(),
-  tagLastUsed: loadTagLastUsed(),
+  hidden: new Set(readJSON("hiddenBookmarks", [])),
+  customTags: readJSON("customTags", {}),
+  removedTags: readJSON("removedTags", {}),
+  globalRemovedTags: new Set(readJSON("globalRemovedTags", []).map(t => String(t).toLowerCase())),
+  tagLastUsed: readJSON("tagLastUsed", {}),
   selecting: false,
   selected: new Set(),
   visibleIds: [],
 };
 
-function saveCustomTags() {
-  localStorage.setItem("customTags", JSON.stringify(state.customTags));
-}
-
-function saveRemovedTags() {
-  localStorage.setItem("removedTags", JSON.stringify(state.removedTags));
-}
-
-function saveGlobalRemovedTags() {
-  localStorage.setItem("globalRemovedTags", JSON.stringify([...state.globalRemovedTags]));
-}
-
-function saveTagLastUsed() {
-  localStorage.setItem("tagLastUsed", JSON.stringify(state.tagLastUsed));
-}
+function saveCustomTags() { writeJSON("customTags", state.customTags); }
+function saveRemovedTags() { writeJSON("removedTags", state.removedTags); }
+function saveGlobalRemovedTags() { writeJSON("globalRemovedTags", [...state.globalRemovedTags]); }
+function saveTagLastUsed() { writeJSON("tagLastUsed", state.tagLastUsed); }
 
 // Stamp a tag as just-used so it sorts to the top of the tag dropdown.
 function markTagUsed(tag) {
@@ -744,19 +693,28 @@ function markTagUsed(tag) {
   saveTagLastUsed();
 }
 
-// A bookmark's effective tags: derived (from the data) plus user-added.
+// The single rule for whether a tag is hidden on a bookmark: removed from this
+// post, or deleted from every post. `low` must already be lowercased. Shared by
+// tagsOf() and the pill renderer so the two can never disagree. (Avoids copying
+// the — potentially large — global set per bookmark on every render.)
+function tagHidden(b, low) {
+  if (state.globalRemovedTags.has(low)) return true;
+  const perPost = state.removedTags[b.id];
+  if (perPost) for (const t of perPost) if (t.toLowerCase() === low) return true;
+  return false;
+}
+
+// A bookmark's effective (visible) tags: derived (from the data) plus user-added.
 function tagsOf(b) {
   const custom = state.customTags[b.id] || [];
   const all = custom.length ? b.tags.concat(custom) : b.tags;
   const perPost = state.removedTags[b.id];
-  const global = state.globalRemovedTags;
-  if ((!perPost || !perPost.length) && global.size === 0) return all;
-  const rm = new Set((perPost || []).map(t => t.toLowerCase()));
-  return all.filter(t => { const l = t.toLowerCase(); return !rm.has(l) && !global.has(l); });
+  if ((!perPost || !perPost.length) && state.globalRemovedTags.size === 0) return all;
+  return all.filter(t => !tagHidden(b, t.toLowerCase()));
 }
 
 function saveHidden() {
-  localStorage.setItem("hiddenBookmarks", JSON.stringify([...state.hidden]));
+  writeJSON("hiddenBookmarks", [...state.hidden]);
   updateRestoreLink();
 }
 
@@ -865,14 +823,13 @@ function bodyHtml(text) {
 // Tag pills for one bookmark: derived tags, then removable custom tags, then the "+" button.
 // Extracted so a tag change can re-render just this row instead of the whole timeline.
 function tagRowHtml(b) {
-  const removed = new Set([...(state.removedTags[b.id] || []).map(t => t.toLowerCase()),
-                           ...state.globalRemovedTags]);
   const rmBtn = `<span class="rmtag" title="Remove tag">×</span>`;
-  const derived = b.tags.filter(t => !removed.has(t.toLowerCase())).map(t =>
+  const visible = t => !tagHidden(b, t.toLowerCase());
+  const derived = b.tags.filter(visible).map(t =>
     t.toLowerCase() === "deleted on x"
       ? `<span class="pill deleted-x" data-tag="${escapeHtml(t)}" data-kind="derived">Deleted on X${rmBtn}</span>`
       : `<span class="pill" style="${pillStyle(t)}" data-tag="${escapeHtml(t)}" data-kind="derived">${escapeHtml(t)}${rmBtn}</span>`).join("");
-  const custom = (state.customTags[b.id] || []).filter(t => !removed.has(t.toLowerCase())).map(t =>
+  const custom = (state.customTags[b.id] || []).filter(visible).map(t =>
     `<span class="pill" style="${pillStyle(t)}" data-tag="${escapeHtml(t)}" data-kind="custom">${escapeHtml(t)}${rmBtn}</span>`).join("");
   return derived + custom + `<button class="pill addtag" type="button" title="Add tag">+</button>`;
 }
@@ -1338,9 +1295,7 @@ function insertTag(tag, negate) {
   input.focus();
 }
 
-function saveSavedFilters() {
-  localStorage.setItem("savedFilters", JSON.stringify(state.savedFilters));
-}
+function saveSavedFilters() { writeJSON("savedFilters", state.savedFilters); }
 
 function saveCurrentFilter() {
   const nameInput = document.getElementById("filterName");
