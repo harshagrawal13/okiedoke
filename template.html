@@ -734,8 +734,8 @@
       <div class="tagsuggest deck-menu" id="deckMenu" hidden></div>
     </div>
     <div class="deck-hints">
-      <kbd>←</kbd> <kbd>→</kbd> prev / next &nbsp; <kbd>↑</kbd> <kbd>↓</kbd> scroll · pick &nbsp;
-      <kbd>⌫</kbd> remove last tag &nbsp; <kbd>⌘↵</kbd> open on X &nbsp; <kbd>Esc</kbd> exit
+      <kbd>←</kbd> <kbd>→</kbd> prev / next &nbsp; <kbd>↑</kbd> <kbd>↓</kbd> scroll · pick &nbsp; <kbd>⇥</kbd> complete &nbsp;
+      <kbd>⌫</kbd> remove last tag &nbsp; <kbd>⌘⌫</kbd> remove post &nbsp; <kbd>⌘↵</kbd> open on X &nbsp; <kbd>Esc</kbd> exit
     </div>
   </div>
 </div>
@@ -1827,6 +1827,20 @@ function removeLastDeckTag() {
   if (!deckMenu.hidden) renderDeckMenu();  // the removed tag is suggestible again
 }
 
+// Remove the current post from view (same as the timeline trash button — a
+// local hide, restorable via "Restore N deleted"; the app never touches X or
+// the ft DB). Drop it from the deck snapshot and advance to the next card.
+function deleteCurrentDeckPost() {
+  const b = deckBookmark();
+  if (!b) return;
+  state.hidden.add(b.id);
+  saveHidden();
+  deck.ids.splice(deck.idx, 1);
+  if (!deck.ids.length) { closeDeck(); return; }
+  if (deck.idx >= deck.ids.length) deck.idx = deck.ids.length - 1;
+  showDeckCard();
+}
+
 deckInput.addEventListener("input", renderDeckMenu);
 deckInput.addEventListener("keydown", e => {
   e.stopPropagation();
@@ -1835,6 +1849,12 @@ deckInput.addEventListener("keydown", e => {
   if (e.key === "Enter") {
     if (e.metaKey || e.ctrlKey) { window.open(deckBookmark().url, "_blank", "noopener"); return; }
     commitDeckTag(menuOpen && deckActive >= 0 ? deckMatches[deckActive].label : undefined);
+  } else if (e.key === "Tab" && menuOpen && (deckMatches.length === 1 || deckActive >= 0)) {
+    // Tab-complete: fill the input with the sole (or highlighted) suggestion so
+    // Enter then adds the full tag, not the partial text you typed.
+    e.preventDefault();
+    deckInput.value = (deckActive >= 0 ? deckMatches[deckActive] : deckMatches[0]).label;
+    renderDeckMenu();
   } else if (e.key === "Escape") {
     if (menuOpen) closeDeckMenu();               // 1st Esc: close suggestions
     else if (!empty) { deckInput.value = ""; }   // 2nd: clear typed text
@@ -1853,6 +1873,8 @@ deckInput.addEventListener("keydown", e => {
       e.preventDefault();
       document.getElementById("deckCard").scrollBy(0, dir * 160);
     }
+  } else if ((e.key === "Backspace" || e.key === "Delete") && (e.metaKey || e.ctrlKey) && empty) {
+    e.preventDefault(); deleteCurrentDeckPost();   // ⌘⌫: remove this post from view
   } else if (e.key === "Backspace" && empty) {
     e.preventDefault(); removeLastDeckTag();
   }
