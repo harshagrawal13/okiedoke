@@ -12,6 +12,7 @@ index.html.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -99,6 +100,24 @@ def last_sync_age_s():
         return None
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def clean_log(text, n=15):
+    """Last n legible lines of ft output. ft decorates its output with ANSI
+    colour codes and a carriage-return braille spinner; captured verbatim and
+    split naively that becomes a wall of `[K` fragments in the sync-error
+    modal, burying the real message. Strip the escapes, collapse each
+    spinner line to its final frame, and drop blank / lone-spinner lines."""
+    text = _ANSI_RE.sub("", text)
+    lines = []
+    for logical in text.split("\n"):
+        seg = logical.rstrip("\r").split("\r")[-1].strip()  # spinner overwrites via \r
+        if seg and not all("⠀" <= c <= "⣿" for c in seg):  # skip braille frames
+            lines.append(seg)
+    return "\n".join(lines[-n:])
+
+
 def run_sync(rebuild):
     """Incremental sync skips bookmarks we already have (ft stops at known
     ones); a rebuild re-crawls everything, which is what lets generate.py
@@ -107,7 +126,7 @@ def run_sync(rebuild):
     sync_state["startedAt"] = started_at
     cmd = ["ft", "sync", "--yes"] + (["--rebuild"] if rebuild else [])
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=45 * 60)
-    tail = "\n".join((proc.stdout + proc.stderr).strip().splitlines()[-15:])
+    tail = clean_log(proc.stdout + proc.stderr)
     if proc.returncode != 0:
         return {"ok": False, "error": f"ft sync failed (exit {proc.returncode})", "log": tail}
 
@@ -135,7 +154,7 @@ def run_sync(rebuild):
         capture_output=True, text=True,
     )
     if gen.returncode != 0:
-        return {"ok": False, "error": "generate.py failed", "log": gen.stderr[-2000:]}
+        return {"ok": False, "error": "generate.py failed", "log": clean_log(gen.stderr)}
     return {"ok": True, "log": tail, "crawled": seen, "total": total, "rebuild": rebuild}
 
 
