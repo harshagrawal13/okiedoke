@@ -1714,7 +1714,9 @@ function closeDeckMenu() {
 // menu, handing ↑/↓ back to scrolling the card.
 function renderDeckMenu() {
   const q = deckInput.value.trim().toLowerCase();
-  deckMatches = (q ? deckPool.filter(t => t.key.includes(q)) : deckPool).slice(0, q ? 8 : 6);
+  // No cap: the menu is scrollable (max-height + overflow-y), and arrow-nav
+  // scrolls the active row into view, so every tag stays reachable.
+  deckMatches = q ? deckPool.filter(t => t.key.includes(q)) : deckPool;
   deckActive = -1;
   if (!deckMatches.length) { closeDeckMenu(); return; }
   deckMenu.hidden = false;
@@ -1724,7 +1726,11 @@ function renderDeckMenu() {
 }
 
 function highlightDeckMenu() {
-  [...deckMenu.children].forEach((el, i) => el.classList.toggle("active", i === deckActive));
+  [...deckMenu.children].forEach((el, i) => {
+    const on = i === deckActive;
+    el.classList.toggle("active", on);
+    if (on) el.scrollIntoView({ block: "nearest" });  // keep the pick visible past the fold
+  });
 }
 
 function renderDeckPills() {
