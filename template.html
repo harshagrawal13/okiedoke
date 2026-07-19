@@ -261,25 +261,28 @@
   .tm-act.restore:hover { background: #1a8cd8; }
   .tm-empty { padding: 24px 18px; text-align: center; color: var(--text-2); font-size: 14px; }
 
-  /* ---- tag-cards deck (keyboard-only tagging, one post at a time) ---- */
+  /* ---- tag-cards deck (keyboard-only tagging, one post at a time) ----
+     A full-screen page of its own: the timeline is hidden entirely while the
+     deck is up, so there is nothing to be distracted by behind the card. */
   .deck-backdrop {
     position: fixed; inset: 0; z-index: 1000;
-    background: rgba(15, 20, 25, 0.55);
+    background: #f7f9f9;
     display: flex; align-items: center; justify-content: center;
   }
   .deck-backdrop[hidden] { display: none; }
   body.deck-open { overflow: hidden; }
+  body.deck-open .shell { display: none; }
   .deck-shell {
     width: 100%; max-width: 632px; max-height: 94vh;
     display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
   }
   .deck-head { display: flex; align-items: center; }
-  .deck-count { color: #fff; font-size: 14px; font-weight: 700; opacity: 0.9; }
+  .deck-count { color: var(--text-2); font-size: 14px; font-weight: 700; }
   .deck-head .tm-x { margin-left: auto; }
   .deck-card {
     background: #fff; border-radius: 18px;
     overflow-y: auto; overscroll-behavior: contain;
-    box-shadow: 0 0 24px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 0 24px rgba(101, 119, 134, 0.25);
     scroll-behavior: smooth;
   }
   /* The deck reuses the timeline card renderer but is its own surface:
@@ -312,14 +315,17 @@
     padding: 9px 12px; outline: none;
   }
   .deck-input:focus { border-color: var(--blue); }
-  /* suggestions sit above the whole tag bar, overlapping the card */
-  .deck-menu { position: absolute; left: 12px; bottom: calc(100% + 4px); min-width: 200px; }
-  .deck-menu[hidden] { display: none; }
-  .deck-hints { text-align: center; color: rgba(255, 255, 255, 0.85); font-size: 12.5px; }
+  /* Suggestions sit above the whole tag bar, overlapping the card. The
+     .deck-tagbar prefix outweighs .tagsuggest's own `position: fixed` (same
+     specificity but later in this sheet), keeping the menu anchored here. */
+  .deck-tagbar .deck-menu { position: absolute; left: 12px; bottom: calc(100% + 4px); min-width: 200px; }
+  .deck-tagbar .deck-menu[hidden] { display: none; }
+  .deck-hints { text-align: center; color: var(--text-2); font-size: 12.5px; }
   .deck-hints kbd {
-    font-family: inherit; font-size: 11.5px; font-weight: 700;
-    background: rgba(255, 255, 255, 0.18); border-radius: 5px; padding: 1px 6px;
+    font-family: inherit; font-size: 11.5px; font-weight: 700; color: var(--text);
+    background: rgba(15, 20, 25, 0.07); border-radius: 5px; padding: 1px 6px;
   }
+  .deck-tagbar, .deck-card { border: 1px solid var(--border); }
 
   /* ---- tweet card ---- */
   article.tweet {
@@ -1567,12 +1573,12 @@ function closeDeckMenu() {
   deckActive = -1;
 }
 
-// Suggestions open on the first keystroke, never on focus — with the input
-// empty, ↑/↓ belong to scrolling the card.
+// Suggestions show as soon as you land on a card: the most-recently-used
+// tags for zero-typing tagging, narrowed once you type. Esc dismisses the
+// menu, handing ↑/↓ back to scrolling the card.
 function renderDeckMenu() {
   const q = deckInput.value.trim().toLowerCase();
-  if (!q) { closeDeckMenu(); return; }
-  deckMatches = deckPool.filter(t => t.key.includes(q)).slice(0, 8);
+  deckMatches = (q ? deckPool.filter(t => t.key.includes(q)) : deckPool).slice(0, q ? 8 : 6);
   deckActive = -1;
   if (!deckMatches.length) { closeDeckMenu(); return; }
   deckMenu.hidden = false;
@@ -1601,7 +1607,7 @@ function showDeckCard() {
   renderDeckPills();
   rebuildDeckPool();
   deckInput.value = "";
-  closeDeckMenu();
+  renderDeckMenu();
   deckInput.focus();
 }
 
@@ -1665,7 +1671,7 @@ function commitDeckTag(valOverride) {
     rebuildDeckPool();
   }
   deckInput.value = "";
-  closeDeckMenu();
+  renderDeckMenu();  // straight back to MRU suggestions for the next tag
 }
 
 // Backspace on an empty input: chip-style undo of the newest visible tag.
@@ -1688,6 +1694,7 @@ function removeLastDeckTag() {
   refreshTagRow(b.id);
   renderDeckPills();
   rebuildDeckPool();
+  if (!deckMenu.hidden) renderDeckMenu();  // the removed tag is suggestible again
 }
 
 deckInput.addEventListener("input", renderDeckMenu);
@@ -1732,7 +1739,9 @@ deckMenu.addEventListener("mousedown", e => {
   commitDeckTag(deckMatches[+opt.dataset.i].label);
 });
 document.getElementById("deck").addEventListener("click", e => {
-  if (e.target.id === "deck" || e.target.closest("#deckClose")) { closeDeck(); return; }
+  // A page of its own, not a modal: only the × (or Esc) leaves — a stray
+  // click on the background shouldn't dump you back to the timeline.
+  if (e.target.closest("#deckClose")) { closeDeck(); return; }
   if (e.target.closest("a") || e.target.tagName === "VIDEO" || e.target.closest(".deck-tagbar")) return;
   const quote = e.target.closest(".quote");
   if (quote && quote.dataset.url) window.open(quote.dataset.url, "_blank", "noopener");
