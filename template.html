@@ -47,6 +47,7 @@
   }
   .topbar .title-row {
     padding: 10px 16px 4px;
+    display: flex; align-items: baseline; gap: 8px;
   }
   .topbar h1 {
     margin: 0;
@@ -54,6 +55,14 @@
     font-weight: 800;
     letter-spacing: -0.2px;
   }
+  /* prod / feat environment badge — makes the daily app vs a dev build obvious */
+  .envbadge {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.3px; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 9999px; align-self: center;
+  }
+  .envbadge[hidden] { display: none; }
+  .envbadge.prod { background: #e8f5fe; color: #1d9bf0; }
+  .envbadge.feat { background: #fff1e0; color: #c2610a; }
   .topbar .sub {
     font-size: 13px;
     color: var(--text-2);
@@ -659,6 +668,7 @@
   <div class="topbar">
     <div class="title-row">
       <h1>Bookmarks</h1>
+      <span class="envbadge" id="envBadge" hidden></span>
       <div class="sub"><span id="totalCount">0</span> saved</div>
     </div>
     <div class="controls">
@@ -2139,6 +2149,19 @@ document.addEventListener("click", e => {
 });
 
 document.getElementById("totalCount").textContent = DATA.length.toLocaleString();
+
+// Label the environment so the daily app and a dev build are easy to tell apart
+// when flipping browser tabs: 8377 = prod (real data), any other served port =
+// feat (a dev-serve.sh sandbox). file:// stays plain "okiedoke".
+const OK_ENV = location.protocol.startsWith("http") ? (location.port === "8377" ? "prod" : "feat") : "";
+if (OK_ENV) {
+  document.title = "okiedoke:" + OK_ENV;
+  const badge = document.getElementById("envBadge");
+  badge.textContent = OK_ENV;
+  badge.classList.add(OK_ENV);
+  badge.hidden = false;
+}
+
 buildTagOptions();
 updateRestoreLink();
 // Heal any applied-but-globally-deleted tags before the first paint so they
