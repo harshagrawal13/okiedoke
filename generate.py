@@ -18,9 +18,20 @@ LAST_FULL_SYNC_PATH = FT_DIR / "last-full-sync.json"
 OUT_PATH = FT_DIR / "index.html"
 TEMPLATE_PATH = Path(__file__).parent / "template.html"
 CONVENIENCE_LINK = Path(__file__).parent / "index.html"
+# The single source of truth for user tags (and hidden posts / saved filters).
+# Lives on disk, not in per-browser localStorage, so tags never diverge between
+# browsers/URLs and survive regeneration. serve.py reads/writes it; here we just
+# embed its current contents so the first paint has them without a round-trip.
+TAGS_PATH = FT_DIR / "okiedoke-tags.json"
 
 HASHTAG_RE = re.compile(r"#(\w+)")
 STOP_DOMAINS = {"x.com", "twitter.com", "t.co"}
+
+# Auto-tagging is OFF: posts arrive untagged and the user tags them by hand in
+# the deck. Flipping this back on restores the derived domain/media/hashtag/
+# category tags below. (Turned off because re-deriving them every regeneration
+# fought the user's manual curation — see derive_tags.)
+AUTO_DERIVE_TAGS = False
 
 
 def ensure_convenience_link():
@@ -105,6 +116,10 @@ def load_full_sync_start():
 
 
 def derive_tags(row, links, has_media, deleted_on_x):
+    # Auto-tagging disabled: every post starts with no tags, so nothing the tool
+    # generates can compete with (or reappear after) the user's own tagging.
+    if not AUTO_DERIVE_TAGS:
+        return []
     tags = []
     if deleted_on_x:
         tags.append("deleted on X")
@@ -133,6 +148,16 @@ def derive_tags(row, links, has_media, deleted_on_x):
             seen.add(key)
             out.append(t)
     return out
+
+
+def load_tags():
+    """The on-disk tag document, embedded into the page for a data-ready first
+    paint. Returns None when the file doesn't exist yet (the app then migrates
+    any legacy localStorage into it on first load)."""
+    try:
+        return json.loads(TAGS_PATH.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
 
 
 def fmt_date(dt):
@@ -236,6 +261,9 @@ def main():
     html = template.replace(
         "/*__BOOKMARKS_DATA__*/[]",
         json.dumps(records, ensure_ascii=False),
+    ).replace(
+        "/*__TAGS_DATA__*/null",
+        json.dumps(load_tags(), ensure_ascii=False),
     )
     OUT_PATH.write_text(html)
     ensure_convenience_link()

@@ -105,6 +105,7 @@
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="%23536471"/></svg>');
     background-repeat: no-repeat; background-position: right 10px center; }
   .shown { font-size: 13px; color: var(--text-2); margin-left: auto; }
+  .savestat { font-size: 12px; font-weight: 600; white-space: nowrap; }
 
   /* tag multiselect dropdown */
   .tagdrop { position: relative; }
@@ -677,6 +678,7 @@
       <button class="chip" id="syncBtn" hidden>Sync</button>
       <span class="restore" id="restoreLink" hidden></span>
       <span class="shown"><span id="shownCount">0</span> shown</span>
+      <span class="savestat" id="saveStat"></span>
     </div>
   </div>
 
@@ -735,6 +737,11 @@
 
 <script>
 const DATA = /*__BOOKMARKS_DATA__*/[];
+// The tag document embedded from okiedoke-tags.json at build time (null until
+// that file first exists). SERVED = running under serve.py, where saves persist
+// to that one shared file rather than this browser's private localStorage.
+const TAGS_DATA = /*__TAGS_DATA__*/null;
+const SERVED = location.protocol.startsWith("http");
 
 // All persisted UI state is JSON under a localStorage key: parse-with-fallback
 // on read, JSON on write. Nothing here ever touches the ft database.
@@ -759,27 +766,140 @@ function writeJSON(key, value) {
 // DB: `hidden` = deleted bookmarks; `removedTags` = per-post tag removals;
 // `globalRemovedTags` = tags deleted from every post; `tagLastUsed` = when each
 // tag was last applied (drives most-recently-used ordering in the dropdown).
+// Load tags FROM the embedded file when served (the shared source of truth),
+// else from this browser's localStorage (file:// / offline fallback). Writes
+// always go back to the file via persistTags(), so the two can't drift.
+const _tagSeed = (SERVED && TAGS_DATA) ? TAGS_DATA : null;
+function tagSource(key, fallback) {
+  if (_tagSeed) { const v = _tagSeed[key]; return v == null ? fallback : v; }
+  return readJSON(key, fallback);
+}
+
 const state = {
   search: "",
-  filterExpr: localStorage.getItem("filterExpr") || "",
+  filterExpr: localStorage.getItem("filterExpr") || "",   // a per-browser view pref, not shared
   filterPred: null,           // compiled predicate for filterExpr (null = match all)
-  savedFilters: readJSON("savedFilters", []),
+  savedFilters: tagSource("savedFilters", []),
   sortKey: "date",
   sortDir: "desc",
-  hidden: new Set(readJSON("hiddenBookmarks", [])),
-  customTags: readJSON("customTags", {}),
-  removedTags: readJSON("removedTags", {}),
-  globalRemovedTags: new Set(readJSON("globalRemovedTags", []).map(t => String(t).toLowerCase())),
-  tagLastUsed: readJSON("tagLastUsed", {}),
+  hidden: new Set(tagSource("hiddenBookmarks", [])),
+  customTags: tagSource("customTags", {}),
+  removedTags: tagSource("removedTags", {}),
+  globalRemovedTags: new Set(tagSource("globalRemovedTags", []).map(t => String(t).toLowerCase())),
+  tagLastUsed: tagSource("tagLastUsed", {}),
   selecting: false,
   selected: new Set(),
   visibleIds: [],
 };
 
-function saveCustomTags() { writeJSON("customTags", state.customTags); }
-function saveRemovedTags() { writeJSON("removedTags", state.removedTags); }
-function saveGlobalRemovedTags() { writeJSON("globalRemovedTags", [...state.globalRemovedTags]); }
-function saveTagLastUsed() { writeJSON("tagLastUsed", state.tagLastUsed); }
+// --- Persistence: okiedoke-tags.json is the ONE source of truth ---------------
+// Every tag/hidden/filter mutation funnels through persistTags(): it POSTs the
+// complete document to the server (which atomically rewrites the file) and
+// mirrors a copy to localStorage as an offline fallback. The client always
+// sends full state, so the server never has to merge.
+function currentTagDoc() {
+  return {
+    version: 1,
+    customTags: state.customTags,
+    removedTags: state.removedTags,
+    globalRemovedTags: [...state.globalRemovedTags],
+    hiddenBookmarks: [...state.hidden],
+    tagLastUsed: state.tagLastUsed,
+    savedFilters: state.savedFilters,
+  };
+}
+
+function mirrorLocal(doc) {
+  try {
+    writeJSON("customTags", doc.customTags);
+    writeJSON("removedTags", doc.removedTags);
+    writeJSON("globalRemovedTags", doc.globalRemovedTags);
+    writeJSON("hiddenBookmarks", doc.hiddenBookmarks);
+    writeJSON("tagLastUsed", doc.tagLastUsed);
+    writeJSON("savedFilters", doc.savedFilters);
+  } catch {}
+}
+
+let _persistTimer = null;
+function persistTags() {
+  const doc = currentTagDoc();
+  mirrorLocal(doc);
+  if (!SERVED) { setSaveStatus("local"); return; }
+  setSaveStatus("saving");
+  clearTimeout(_persistTimer);
+  _persistTimer = setTimeout(() => {
+    fetch("/tags", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(doc) })
+      .then(r => { if (!r.ok) throw new Error(r.status); setSaveStatus("saved"); })
+      .catch(() => setSaveStatus("error"));
+  }, 400);
+}
+
+function setSaveStatus(kind) {
+  const el = document.getElementById("saveStat");
+  if (!el) return;
+  const map = {
+    saving: ["Saving…", "var(--text-2)"],
+    saved: ["✓ Saved", "var(--green)"],
+    error: ["⚠ Save failed — is serve.py running?", "#f4212e"],
+    local: ["Saved in this browser only", "var(--text-2)"],
+  };
+  const [text, color] = map[kind] || ["", ""];
+  el.textContent = text;
+  el.style.color = color;
+  clearTimeout(el._t);
+  if (kind === "saved") el._t = setTimeout(() => { el.textContent = ""; }, 1500);
+}
+
+// Replace all in-memory tag state from a document loaded off disk, then redraw.
+// Used when the server's file is fresher than what this browser started with
+// (e.g. another browser tagged something) — the file always wins.
+function adoptTagDoc(doc) {
+  state.customTags = doc.customTags || {};
+  state.removedTags = doc.removedTags || {};
+  state.globalRemovedTags = new Set((doc.globalRemovedTags || []).map(t => String(t).toLowerCase()));
+  state.hidden = new Set(doc.hiddenBookmarks || []);
+  state.tagLastUsed = doc.tagLastUsed || {};
+  state.savedFilters = doc.savedFilters || [];
+  const healed = healSuppression();
+  mirrorLocal(currentTagDoc());
+  if (healed && SERVED) persistTags();  // write the corrected doc back to the file
+  buildTagOptions();
+  renderSavedFilters();
+  updateRestoreLink();
+  refreshAllTagRows();
+  applyState();
+}
+
+function saveCustomTags() { persistTags(); }
+function saveRemovedTags() { persistTags(); }
+function saveGlobalRemovedTags() { persistTags(); }
+function saveTagLastUsed() { persistTags(); }
+
+// Re-applying a tag that was "deleted from every post" must bring it back, not
+// silently re-hide it. Without this, a name sitting in globalRemovedTags stays
+// invisible even after you tag posts with it — the tag looks like it vanished.
+// Returns true if it cleared a global suppression.
+function unsuppressGlobal(low) {
+  if (!state.globalRemovedTags.has(low)) return false;
+  state.globalRemovedTags.delete(low);
+  saveGlobalRemovedTags();
+  return true;
+}
+
+// Self-heal a contradictory state: a tag actually applied to a post must never
+// also be in the global-deleted set (that hides it everywhere — the exact bug
+// that made tags look like they'd disappeared). Runs on load; returns true if
+// it removed any contradiction so the caller can re-render + persist.
+function healSuppression() {
+  if (!state.globalRemovedTags.size) return false;
+  const applied = new Set();
+  for (const id in state.customTags)
+    for (const t of state.customTags[id]) applied.add(t.toLowerCase());
+  let changed = false;
+  for (const low of [...state.globalRemovedTags])
+    if (applied.has(low)) { state.globalRemovedTags.delete(low); changed = true; }
+  return changed;
+}
 
 // Stamp a tag as just-used so it sorts to the top of the tag dropdown.
 function markTagUsed(tag) {
@@ -808,7 +928,7 @@ function tagsOf(b) {
 }
 
 function saveHidden() {
-  writeJSON("hiddenBookmarks", [...state.hidden]);
+  persistTags();
   updateRestoreLink();
 }
 
@@ -1389,7 +1509,7 @@ function insertTag(tag, negate) {
   input.focus();
 }
 
-function saveSavedFilters() { writeJSON("savedFilters", state.savedFilters); }
+function saveSavedFilters() { persistTags(); }
 
 function saveCurrentFilter() {
   const nameInput = document.getElementById("filterName");
@@ -1500,6 +1620,7 @@ function beginAddTag(btn) {
     const val = (valOverride != null ? valOverride : (input.value || "").trim());
     if (commit && val && !own.has(val.toLowerCase())) {
       const low = val.toLowerCase();
+      unsuppressGlobal(low);   // a globally-deleted name comes back on re-tag
       const removed = state.removedTags[id] || [];
       if (removed.some(t => t.toLowerCase() === low)) {
         // Re-adding a tag that was removed: just un-suppress it (keeps a
@@ -1654,6 +1775,7 @@ function commitDeckTag(valOverride) {
   const b = deckBookmark();
   if (!val) return;
   const low = val.toLowerCase();
+  let changed = unsuppressGlobal(low);   // a globally-deleted name comes back on re-tag
   if (!tagsOf(b).some(t => t.toLowerCase() === low)) {
     const removed = state.removedTags[b.id] || [];
     if (removed.some(t => t.toLowerCase() === low)) {
@@ -1664,6 +1786,9 @@ function commitDeckTag(valOverride) {
       state.customTags[b.id] = (state.customTags[b.id] || []).concat(val);
       saveCustomTags();
     }
+    changed = true;
+  }
+  if (changed) {
     markTagUsed(low);
     buildTagOptions();
     refreshTagRow(b.id);  // keep the (hidden) timeline card in sync
@@ -1989,5 +2114,31 @@ document.addEventListener("click", e => {
 document.getElementById("totalCount").textContent = DATA.length.toLocaleString();
 buildTagOptions();
 updateRestoreLink();
+// Heal any applied-but-globally-deleted tags before the first paint so they
+// show up immediately (not just after a save round-trip).
+if (healSuppression()) { buildTagOptions(); refreshAllTagRows(); }
 setFilterExpr(state.filterExpr);  // compile any saved expression, then render
+
+// Reconcile with the shared file — it is the source of truth. If it already
+// holds tags (possibly written by another browser), adopt them; if it's empty,
+// seed it from whatever we loaded, migrating this browser's legacy localStorage
+// exactly once. Never overwrites a non-empty file, so no store can clobber
+// another.
+if (SERVED) {
+  fetch("/tags").then(r => r.ok ? r.json() : null).then(doc => {
+    if (!doc) return;
+    const fileHasData =
+      Object.keys(doc.customTags || {}).length ||
+      (doc.hiddenBookmarks || []).length ||
+      (doc.savedFilters || []).length ||
+      Object.keys(doc.removedTags || {}).length ||
+      (doc.globalRemovedTags || []).length;
+    const localHasData =
+      Object.keys(state.customTags).length || state.hidden.size ||
+      state.savedFilters.length || Object.keys(state.removedTags).length ||
+      state.globalRemovedTags.size;
+    if (fileHasData) adoptTagDoc(doc);
+    else if (localHasData) persistTags();  // seed the empty file from this browser
+  }).catch(() => {});
+}
 </script>
