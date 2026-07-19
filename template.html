@@ -281,6 +281,7 @@
   .deck-count { color: var(--text-2); font-size: 14px; font-weight: 700; }
   .deck-head .tm-x { margin-left: auto; }
   .deck-card {
+    flex: 1 1 auto; min-height: 0;   /* fill remaining height; shrink as the tag bar grows */
     background: #fff; border-radius: 18px;
     overflow-y: auto; overscroll-behavior: contain;
     box-shadow: 0 0 24px rgba(101, 119, 134, 0.25);
@@ -316,10 +317,14 @@
     padding: 9px 12px; outline: none;
   }
   .deck-input:focus { border-color: var(--blue); }
-  /* Suggestions sit above the whole tag bar, overlapping the card. The
-     .deck-tagbar prefix outweighs .tagsuggest's own `position: fixed` (same
-     specificity but later in this sheet), keeping the menu anchored here. */
-  .deck-tagbar .deck-menu { position: absolute; left: 12px; bottom: calc(100% + 4px); min-width: 200px; }
+  /* Suggestions live IN the tag bar's normal flow (below the input), so they
+     push layout down instead of floating over the post above. The two-class
+     prefix outweighs .tagsuggest's own `position: fixed`. */
+  .deck-tagbar .deck-menu {
+    position: static; margin-top: 8px;
+    box-shadow: none; border: 1px solid var(--border); border-radius: 12px;
+    max-height: 190px; overflow-y: auto;
+  }
   .deck-tagbar .deck-menu[hidden] { display: none; }
   .deck-hints { text-align: center; color: var(--text-2); font-size: 12.5px; }
   .deck-hints kbd {
@@ -723,10 +728,10 @@
     </div>
     <div class="deck-card" id="deckCard" role="dialog" aria-label="Tag cards" aria-modal="true"></div>
     <div class="deck-tagbar">
-      <div class="tagsuggest deck-menu" id="deckMenu" hidden></div>
       <div class="deck-pills" id="deckPills"></div>
       <input id="deckInput" class="deck-input" type="text" autocomplete="off" spellcheck="false"
              placeholder="type a tag, Enter to add">
+      <div class="tagsuggest deck-menu" id="deckMenu" hidden></div>
     </div>
     <div class="deck-hints">
       <kbd>←</kbd> <kbd>→</kbd> prev / next &nbsp; <kbd>↑</kbd> <kbd>↓</kbd> scroll · pick &nbsp;
