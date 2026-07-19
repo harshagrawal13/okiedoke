@@ -89,23 +89,38 @@ Rules for any change:
 - Clearing browser site data no longer loses tags (they're on disk); only
   deleting `okiedoke-tags.json` does.
 
+## Dev vs daily — never test a branch against real data
+
+The daily app (`okiedoke.command`) runs on **port 8377** against `~/.ft-bookmarks`
+(your REAL bookmarks + tags). **Never run a bare `python3 generate.py` or serve a
+feature branch against that dir** — it overwrites the real `index.html` and a
+buggy branch can corrupt the real `okiedoke-tags.json`.
+
+Instead, test feature branches with **`./dev-serve.sh`**: it kills any stale dev
+server, runs the current worktree on **port 8378** against a sandbox dir
+`~/.ft-bookmarks-dev` (real DB/media as read-only symlinks, a private COPY of your
+tags), and leaves 8377 + real data untouched. Both `serve.py` and `generate.py`
+honor `OKIEDOKE_DATA` and `OKIEDOKE_PORT`. Reset the sandbox with
+`rm -rf ~/.ft-bookmarks-dev`.
+
 ## Verifying changes (required)
 
-Headless Chrome, after every `template.html` change:
+Headless Chrome against the **sandbox** build (never the real one), after every
+`template.html` change:
 
 ```sh
-python3 generate.py
+OKIEDOKE_DATA="$HOME/.ft-bookmarks-dev" python3 generate.py   # or just run ./dev-serve.sh
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
   --headless=new --disable-gpu --enable-logging=stderr --v=1 \
   --screenshot=/tmp/ok.png --window-size=1200,2000 \
-  "file://$HOME/.ft-bookmarks/index.html" 2> /tmp/ok.log
+  "file://$HOME/.ft-bookmarks-dev/index.html" 2> /tmp/ok.log
 grep -iE "uncaught|CONSOLE" /tmp/ok.log   # must be empty
 ```
 
 Then look at the screenshot. Two real shipped-broken bugs were caught only
 this way (a JS crash that blanked the table; column overflow). To test
-interactions, append a script that clicks things to a copy of index.html and
-screenshot that.
+interactions against the live server, drive `http://localhost:8378` (the dev
+server) — never 8377.
 
 ## Style
 

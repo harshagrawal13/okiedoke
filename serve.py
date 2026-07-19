@@ -27,7 +27,9 @@ DB = FT_DIR / "bookmarks.db"                      # ft's synced database
 LAST_FULL_SYNC = FT_DIR / "last-full-sync.json"  # last full re-crawl (for deleted-on-X)
 LAST_SYNC = FT_DIR / "last-sync.json"            # last sync of any kind (for the cooldown)
 TAGS_FILE = FT_DIR / "okiedoke-tags.json"        # the ONE source of truth for user tags
-PORT = 8377
+# Daily app defaults to 8377; a feature-branch dev server sets OKIEDOKE_PORT
+# (and OKIEDOKE_DATA) so it never collides with or overwrites the real one.
+PORT = int(os.environ.get("OKIEDOKE_PORT", "8377"))
 
 # The tag document's known keys and their empty shapes. POST /tags is coerced to
 # exactly these so a malformed client payload can never corrupt the file.
