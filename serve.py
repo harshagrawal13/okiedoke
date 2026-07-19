@@ -26,7 +26,44 @@ INDEX = FT_DIR / "index.html"                    # the built app
 DB = FT_DIR / "bookmarks.db"                      # ft's synced database
 LAST_FULL_SYNC = FT_DIR / "last-full-sync.json"  # last full re-crawl (for deleted-on-X)
 LAST_SYNC = FT_DIR / "last-sync.json"            # last sync of any kind (for the cooldown)
-PORT = 8377
+TAGS_FILE = FT_DIR / "okiedoke-tags.json"        # the ONE source of truth for user tags
+# Daily app defaults to 8377; a feature-branch dev server sets OKIEDOKE_PORT
+# (and OKIEDOKE_DATA) so it never collides with or overwrites the real one.
+PORT = int(os.environ.get("OKIEDOKE_PORT", "8377"))
+
+# The tag document's known keys and their empty shapes. POST /tags is coerced to
+# exactly these so a malformed client payload can never corrupt the file.
+TAGS_SHAPE = {
+    "customTags": dict,
+    "removedTags": dict,
+    "globalRemovedTags": list,
+    "hiddenBookmarks": list,
+    "tagLastUsed": dict,
+    "savedFilters": list,
+}
+tags_lock = threading.Lock()
+
+
+def read_tags():
+    try:
+        doc = json.loads(TAGS_FILE.read_text())
+        return doc if isinstance(doc, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def write_tags(doc):
+    """Atomically replace the tag file (temp + os.replace) so a crash or a
+    concurrent read never sees a half-written document."""
+    clean = {"version": 1}
+    for key, typ in TAGS_SHAPE.items():
+        val = doc.get(key)
+        clean[key] = val if isinstance(val, typ) else typ()
+    tmp = TAGS_FILE.with_suffix(".json.tmp")
+    with tags_lock:
+        tmp.write_text(json.dumps(clean, ensure_ascii=False))
+        os.replace(tmp, TAGS_FILE)
+    return clean
 
 sync_lock = threading.Lock()
 sync_state = {"running": False, "result": None, "startedAt": None}
@@ -141,9 +178,25 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
+        path = self.path.split("?")[0]
+        # Persist the whole tag document. The client always sends complete state,
+        # so this is a full overwrite (atomic) — no server-side merge needed.
+        if path == "/tags":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                doc = json.loads(self.rfile.read(length) or b"{}")
+            except (ValueError, json.JSONDecodeError):
+                self.send_error(400)
+                return
+            saved = write_tags(doc if isinstance(doc, dict) else {})
+            self.send_json({"ok": True, "saved": True, "counts": {
+                "customTags": len(saved["customTags"]),
+                "hiddenBookmarks": len(saved["hiddenBookmarks"]),
+            }})
+            return
         # Sync runs in a background thread: a rebuild crawl takes minutes and
         # browsers time out long-idle fetches, so the client polls /sync-status.
-        if self.path.split("?")[0] != "/sync":
+        if path != "/sync":
             self.send_error(404)
             return
         query = (self.path.split("?") + [""])[1]
@@ -166,6 +219,11 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"ok": True, "running": True})
 
     def do_GET(self):
+        if self.path == "/tags":
+            # The freshest tag document from disk — lets any browser pull tags
+            # saved by another without a regeneration.
+            self.send_json(read_tags())
+            return
         if self.path == "/sync-status":
             # Percent progress only makes sense for a full re-crawl; an
             # incremental sync touches few rows, so show indeterminate.

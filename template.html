@@ -47,6 +47,7 @@
   }
   .topbar .title-row {
     padding: 10px 16px 4px;
+    display: flex; align-items: baseline; gap: 8px;
   }
   .topbar h1 {
     margin: 0;
@@ -54,6 +55,14 @@
     font-weight: 800;
     letter-spacing: -0.2px;
   }
+  /* prod / feat environment badge — makes the daily app vs a dev build obvious */
+  .envbadge {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.3px; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 9999px; align-self: center;
+  }
+  .envbadge[hidden] { display: none; }
+  .envbadge.prod { background: #e8f5fe; color: #1d9bf0; }
+  .envbadge.feat { background: #fff1e0; color: #c2610a; }
   .topbar .sub {
     font-size: 13px;
     color: var(--text-2);
@@ -105,6 +114,7 @@
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="%23536471"/></svg>');
     background-repeat: no-repeat; background-position: right 10px center; }
   .shown { font-size: 13px; color: var(--text-2); margin-left: auto; }
+  .savestat { font-size: 12px; font-weight: 600; white-space: nowrap; }
 
   /* tag multiselect dropdown */
   .tagdrop { position: relative; }
@@ -260,6 +270,77 @@
   .tm-act.restore { background: var(--blue); color: #fff; border-color: var(--blue); }
   .tm-act.restore:hover { background: #1a8cd8; }
   .tm-empty { padding: 24px 18px; text-align: center; color: var(--text-2); font-size: 14px; }
+
+  /* ---- tag-cards deck (keyboard-only tagging, one post at a time) ----
+     A full-screen page of its own: the timeline is hidden entirely while the
+     deck is up, so there is nothing to be distracted by behind the card. */
+  .deck-backdrop {
+    position: fixed; inset: 0; z-index: 1000;
+    background: #f7f9f9;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .deck-backdrop[hidden] { display: none; }
+  body.deck-open { overflow: hidden; }
+  body.deck-open .shell { display: none; }
+  .deck-shell {
+    width: 100%; max-width: 632px; max-height: 94vh;
+    display: flex; flex-direction: column; gap: 10px; padding: 0 16px;
+  }
+  .deck-head { display: flex; align-items: center; }
+  .deck-count { color: var(--text-2); font-size: 14px; font-weight: 700; }
+  .deck-head .tm-x { margin-left: auto; }
+  .deck-card {
+    flex: 1 1 auto; min-height: 0;   /* fill remaining height; shrink as the tag bar grows */
+    background: #fff; border-radius: 18px;
+    overflow-y: auto; overscroll-behavior: contain;
+    box-shadow: 0 0 24px rgba(101, 119, 134, 0.25);
+    scroll-behavior: smooth;
+  }
+  /* The deck reuses the timeline card renderer but is its own surface:
+     no hover/click affordances, no per-card virtualization, always unclamped. */
+  .deck-card article.tweet {
+    border-bottom: none; cursor: default;
+    content-visibility: visible; contain-intrinsic-size: none;
+  }
+  .deck-card article.tweet:hover { background: #fff; }
+  .deck-card .selcircle, .deck-card .del, .deck-card .tagrow, .deck-card .showmore { display: none; }
+  .deck-card .body.clamped {
+    display: block; -webkit-line-clamp: unset; -webkit-box-orient: unset; overflow: visible;
+  }
+  .deck-shell.bounce-l { animation: deck-bounce-l 0.22s ease; }
+  .deck-shell.bounce-r { animation: deck-bounce-r 0.22s ease; }
+  @keyframes deck-bounce-l { 30% { transform: translateX(16px); } }
+  @keyframes deck-bounce-r { 30% { transform: translateX(-16px); } }
+  .deck-tagbar {
+    position: relative; flex: none;
+    background: #fff; border-radius: 18px; padding: 12px 16px;
+  }
+  .deck-pills {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    min-height: 24px; margin-bottom: 8px;
+  }
+  .deck-pills .none { color: var(--text-2); font-size: 12.5px; }
+  .deck-input {
+    width: 100%; font: inherit; font-size: 15px; color: var(--text);
+    border: 1px solid var(--border-media); border-radius: 10px;
+    padding: 9px 12px; outline: none;
+  }
+  .deck-input:focus { border-color: var(--blue); }
+  /* Suggestions live IN the tag bar's normal flow (below the input), so they
+     push layout down instead of floating over the post above. The two-class
+     prefix outweighs .tagsuggest's own `position: fixed`. */
+  .deck-tagbar .deck-menu {
+    position: static; margin-top: 8px;
+    box-shadow: none; border: 1px solid var(--border); border-radius: 12px;
+    max-height: 190px; overflow-y: auto;
+  }
+  .deck-tagbar .deck-menu[hidden] { display: none; }
+  .deck-hints { text-align: center; color: var(--text-2); font-size: 12.5px; }
+  .deck-hints kbd {
+    font-family: inherit; font-size: 11.5px; font-weight: 700; color: var(--text);
+    background: rgba(15, 20, 25, 0.07); border-radius: 5px; padding: 1px 6px;
+  }
+  .deck-tagbar, .deck-card { border: 1px solid var(--border); }
 
   /* ---- tweet card ---- */
   article.tweet {
@@ -587,6 +668,7 @@
   <div class="topbar">
     <div class="title-row">
       <h1>Bookmarks</h1>
+      <span class="envbadge" id="envBadge" hidden></span>
       <div class="sub"><span id="totalCount">0</span> saved</div>
     </div>
     <div class="controls">
@@ -606,10 +688,12 @@
       </select>
       <button class="chip" id="sortDir" title="Toggle sort direction">↓</button>
       <button class="chip" id="selectToggle">Select</button>
+      <button class="chip" id="deckToggle" title="Tag posts one-by-one with the keyboard">Tag cards</button>
       <button class="chip" id="manageTags" title="Delete or restore tags">Manage tags</button>
       <button class="chip" id="syncBtn" hidden>Sync</button>
       <span class="restore" id="restoreLink" hidden></span>
       <span class="shown"><span id="shownCount">0</span> shown</span>
+      <span class="savestat" id="saveStat"></span>
     </div>
   </div>
 
@@ -644,8 +728,35 @@
   </div>
 </div>
 
+<!-- Tag-cards deck: top-level like #tagManager so the sticky header can never
+     trap its overlay or swallow its clicks. -->
+<div id="deck" class="deck-backdrop" hidden>
+  <div class="deck-shell">
+    <div class="deck-head">
+      <span class="deck-count" id="deckCount"></span>
+      <button id="deckClose" class="tm-x" type="button" title="Close" aria-label="Close">×</button>
+    </div>
+    <div class="deck-card" id="deckCard" role="dialog" aria-label="Tag cards" aria-modal="true"></div>
+    <div class="deck-tagbar">
+      <div class="deck-pills" id="deckPills"></div>
+      <input id="deckInput" class="deck-input" type="text" autocomplete="off" spellcheck="false"
+             placeholder="type a tag, Enter to add">
+      <div class="tagsuggest deck-menu" id="deckMenu" hidden></div>
+    </div>
+    <div class="deck-hints">
+      <kbd>←</kbd> <kbd>→</kbd> prev / next &nbsp; <kbd>↑</kbd> <kbd>↓</kbd> scroll · pick &nbsp; <kbd>⇥</kbd> complete &nbsp;
+      <kbd>⌫</kbd> remove last tag &nbsp; <kbd>⌘⌫</kbd> remove post &nbsp; <kbd>⌘↵</kbd> open on X &nbsp; <kbd>Esc</kbd> exit
+    </div>
+  </div>
+</div>
+
 <script>
 const DATA = /*__BOOKMARKS_DATA__*/[];
+// The tag document embedded from okiedoke-tags.json at build time (null until
+// that file first exists). SERVED = running under serve.py, where saves persist
+// to that one shared file rather than this browser's private localStorage.
+const TAGS_DATA = /*__TAGS_DATA__*/null;
+const SERVED = location.protocol.startsWith("http");
 
 // All persisted UI state is JSON under a localStorage key: parse-with-fallback
 // on read, JSON on write. Nothing here ever touches the ft database.
@@ -670,27 +781,140 @@ function writeJSON(key, value) {
 // DB: `hidden` = deleted bookmarks; `removedTags` = per-post tag removals;
 // `globalRemovedTags` = tags deleted from every post; `tagLastUsed` = when each
 // tag was last applied (drives most-recently-used ordering in the dropdown).
+// Load tags FROM the embedded file when served (the shared source of truth),
+// else from this browser's localStorage (file:// / offline fallback). Writes
+// always go back to the file via persistTags(), so the two can't drift.
+const _tagSeed = (SERVED && TAGS_DATA) ? TAGS_DATA : null;
+function tagSource(key, fallback) {
+  if (_tagSeed) { const v = _tagSeed[key]; return v == null ? fallback : v; }
+  return readJSON(key, fallback);
+}
+
 const state = {
   search: "",
-  filterExpr: localStorage.getItem("filterExpr") || "",
+  filterExpr: localStorage.getItem("filterExpr") || "",   // a per-browser view pref, not shared
   filterPred: null,           // compiled predicate for filterExpr (null = match all)
-  savedFilters: readJSON("savedFilters", []),
+  savedFilters: tagSource("savedFilters", []),
   sortKey: "date",
   sortDir: "desc",
-  hidden: new Set(readJSON("hiddenBookmarks", [])),
-  customTags: readJSON("customTags", {}),
-  removedTags: readJSON("removedTags", {}),
-  globalRemovedTags: new Set(readJSON("globalRemovedTags", []).map(t => String(t).toLowerCase())),
-  tagLastUsed: readJSON("tagLastUsed", {}),
+  hidden: new Set(tagSource("hiddenBookmarks", [])),
+  customTags: tagSource("customTags", {}),
+  removedTags: tagSource("removedTags", {}),
+  globalRemovedTags: new Set(tagSource("globalRemovedTags", []).map(t => String(t).toLowerCase())),
+  tagLastUsed: tagSource("tagLastUsed", {}),
   selecting: false,
   selected: new Set(),
   visibleIds: [],
 };
 
-function saveCustomTags() { writeJSON("customTags", state.customTags); }
-function saveRemovedTags() { writeJSON("removedTags", state.removedTags); }
-function saveGlobalRemovedTags() { writeJSON("globalRemovedTags", [...state.globalRemovedTags]); }
-function saveTagLastUsed() { writeJSON("tagLastUsed", state.tagLastUsed); }
+// --- Persistence: okiedoke-tags.json is the ONE source of truth ---------------
+// Every tag/hidden/filter mutation funnels through persistTags(): it POSTs the
+// complete document to the server (which atomically rewrites the file) and
+// mirrors a copy to localStorage as an offline fallback. The client always
+// sends full state, so the server never has to merge.
+function currentTagDoc() {
+  return {
+    version: 1,
+    customTags: state.customTags,
+    removedTags: state.removedTags,
+    globalRemovedTags: [...state.globalRemovedTags],
+    hiddenBookmarks: [...state.hidden],
+    tagLastUsed: state.tagLastUsed,
+    savedFilters: state.savedFilters,
+  };
+}
+
+function mirrorLocal(doc) {
+  try {
+    writeJSON("customTags", doc.customTags);
+    writeJSON("removedTags", doc.removedTags);
+    writeJSON("globalRemovedTags", doc.globalRemovedTags);
+    writeJSON("hiddenBookmarks", doc.hiddenBookmarks);
+    writeJSON("tagLastUsed", doc.tagLastUsed);
+    writeJSON("savedFilters", doc.savedFilters);
+  } catch {}
+}
+
+let _persistTimer = null;
+function persistTags() {
+  const doc = currentTagDoc();
+  mirrorLocal(doc);
+  if (!SERVED) { setSaveStatus("local"); return; }
+  setSaveStatus("saving");
+  clearTimeout(_persistTimer);
+  _persistTimer = setTimeout(() => {
+    fetch("/tags", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(doc) })
+      .then(r => { if (!r.ok) throw new Error(r.status); setSaveStatus("saved"); })
+      .catch(() => setSaveStatus("error"));
+  }, 400);
+}
+
+function setSaveStatus(kind) {
+  const el = document.getElementById("saveStat");
+  if (!el) return;
+  const map = {
+    saving: ["Saving…", "var(--text-2)"],
+    saved: ["✓ Saved", "var(--green)"],
+    error: ["⚠ Save failed — is serve.py running?", "#f4212e"],
+    local: ["Saved in this browser only", "var(--text-2)"],
+  };
+  const [text, color] = map[kind] || ["", ""];
+  el.textContent = text;
+  el.style.color = color;
+  clearTimeout(el._t);
+  if (kind === "saved") el._t = setTimeout(() => { el.textContent = ""; }, 1500);
+}
+
+// Replace all in-memory tag state from a document loaded off disk, then redraw.
+// Used when the server's file is fresher than what this browser started with
+// (e.g. another browser tagged something) — the file always wins.
+function adoptTagDoc(doc) {
+  state.customTags = doc.customTags || {};
+  state.removedTags = doc.removedTags || {};
+  state.globalRemovedTags = new Set((doc.globalRemovedTags || []).map(t => String(t).toLowerCase()));
+  state.hidden = new Set(doc.hiddenBookmarks || []);
+  state.tagLastUsed = doc.tagLastUsed || {};
+  state.savedFilters = doc.savedFilters || [];
+  const healed = healSuppression();
+  mirrorLocal(currentTagDoc());
+  if (healed && SERVED) persistTags();  // write the corrected doc back to the file
+  buildTagOptions();
+  renderSavedFilters();
+  updateRestoreLink();
+  refreshAllTagRows();
+  applyState();
+}
+
+function saveCustomTags() { persistTags(); }
+function saveRemovedTags() { persistTags(); }
+function saveGlobalRemovedTags() { persistTags(); }
+function saveTagLastUsed() { persistTags(); }
+
+// Re-applying a tag that was "deleted from every post" must bring it back, not
+// silently re-hide it. Without this, a name sitting in globalRemovedTags stays
+// invisible even after you tag posts with it — the tag looks like it vanished.
+// Returns true if it cleared a global suppression.
+function unsuppressGlobal(low) {
+  if (!state.globalRemovedTags.has(low)) return false;
+  state.globalRemovedTags.delete(low);
+  saveGlobalRemovedTags();
+  return true;
+}
+
+// Self-heal a contradictory state: a tag actually applied to a post must never
+// also be in the global-deleted set (that hides it everywhere — the exact bug
+// that made tags look like they'd disappeared). Runs on load; returns true if
+// it removed any contradiction so the caller can re-render + persist.
+function healSuppression() {
+  if (!state.globalRemovedTags.size) return false;
+  const applied = new Set();
+  for (const id in state.customTags)
+    for (const t of state.customTags[id]) applied.add(t.toLowerCase());
+  let changed = false;
+  for (const low of [...state.globalRemovedTags])
+    if (applied.has(low)) { state.globalRemovedTags.delete(low); changed = true; }
+  return changed;
+}
 
 // Stamp a tag as just-used so it sorts to the top of the tag dropdown.
 function markTagUsed(tag) {
@@ -719,7 +943,7 @@ function tagsOf(b) {
 }
 
 function saveHidden() {
-  writeJSON("hiddenBookmarks", [...state.hidden]);
+  persistTags();
   updateRestoreLink();
 }
 
@@ -1300,7 +1524,7 @@ function insertTag(tag, negate) {
   input.focus();
 }
 
-function saveSavedFilters() { writeJSON("savedFilters", state.savedFilters); }
+function saveSavedFilters() { persistTags(); }
 
 function saveCurrentFilter() {
   const nameInput = document.getElementById("filterName");
@@ -1411,6 +1635,7 @@ function beginAddTag(btn) {
     const val = (valOverride != null ? valOverride : (input.value || "").trim());
     if (commit && val && !own.has(val.toLowerCase())) {
       const low = val.toLowerCase();
+      unsuppressGlobal(low);   // a globally-deleted name comes back on re-tag
       const removed = state.removedTags[id] || [];
       if (removed.some(t => t.toLowerCase() === low)) {
         // Re-adding a tag that was removed: just un-suppress it (keeps a
@@ -1457,6 +1682,232 @@ function beginAddTag(btn) {
 
   renderMenu();  // show existing tags immediately on open
 }
+
+// --- Tag-cards deck: flip through the filtered timeline one post at a time,
+// tagging with the keyboard only. The list is a snapshot taken on entry —
+// tagging never removes a card mid-session (the filter re-applies on exit).
+// Position survives exit/re-enter within a page session, not across reloads.
+const deck = { open: false, ids: [], idx: 0 };
+
+const deckInput = document.getElementById("deckInput");
+const deckMenu = document.getElementById("deckMenu");
+let deckMatches = [], deckActive = -1, deckPool = [];
+
+function deckBookmark() { return byId.get(deck.ids[deck.idx]); }
+
+// Existing tags this post doesn't already have, most-recently-used first.
+function rebuildDeckPool() {
+  const own = new Set(tagsOf(deckBookmark()).map(t => t.toLowerCase()));
+  deckPool = tagCountsSorted()
+    .map(([key, { label, n }]) => ({ key, label, n }))
+    .filter(t => !own.has(t.key));
+}
+
+function closeDeckMenu() {
+  deckMenu.hidden = true;
+  deckMatches = [];
+  deckActive = -1;
+}
+
+// Suggestions show as soon as you land on a card: the most-recently-used
+// tags for zero-typing tagging, narrowed once you type. Esc dismisses the
+// menu, handing ↑/↓ back to scrolling the card.
+function renderDeckMenu() {
+  const q = deckInput.value.trim().toLowerCase();
+  deckMatches = (q ? deckPool.filter(t => t.key.includes(q)) : deckPool).slice(0, q ? 8 : 6);
+  deckActive = -1;
+  if (!deckMatches.length) { closeDeckMenu(); return; }
+  deckMenu.hidden = false;
+  deckMenu.innerHTML = deckMatches.map((t, i) =>
+    `<div class="opt" data-i="${i}"><span class="pill" style="${pillStyle(t.label)}">${escapeHtml(t.label)}</span><span class="cnt">${t.n}</span></div>`
+  ).join("");
+}
+
+function highlightDeckMenu() {
+  [...deckMenu.children].forEach((el, i) => el.classList.toggle("active", i === deckActive));
+}
+
+function renderDeckPills() {
+  const tags = tagsOf(deckBookmark());
+  document.getElementById("deckPills").innerHTML = tags.length
+    ? tags.map(t => `<span class="pill" style="${pillStyle(t)}">${escapeHtml(t)}</span>`).join("")
+    : `<span class="none">no tags yet</span>`;
+}
+
+function showDeckCard() {
+  const b = deckBookmark();
+  const card = document.getElementById("deckCard");
+  card.innerHTML = tweetHtml(b);
+  card.scrollTop = 0;
+  document.getElementById("deckCount").textContent = `${deck.idx + 1} / ${deck.ids.length}`;
+  renderDeckPills();
+  rebuildDeckPool();
+  deckInput.value = "";
+  renderDeckMenu();
+  deckInput.focus();
+}
+
+function openDeck() {
+  if (!state.visibleIds.length || deck.open) return;
+  if (state.selecting) setSelecting(false);
+  document.getElementById("tagDropdown").open = false;
+  deck.ids = state.visibleIds.slice();
+  deck.idx = Math.min(deck.idx, deck.ids.length - 1);
+  deck.open = true;
+  document.getElementById("deck").hidden = false;
+  document.body.classList.add("deck-open");
+  showDeckCard();
+}
+
+function closeDeck() {
+  deck.open = false;
+  document.getElementById("deck").hidden = true;
+  document.body.classList.remove("deck-open");
+  document.getElementById("deckCard").innerHTML = "";  // stop any playing video
+  closeDeckMenu();
+  applyState();  // tags added in the deck may change what the filter matches
+}
+
+function navDeck(delta) {
+  const next = deck.idx + delta;
+  const shell = document.querySelector("#deck .deck-shell");
+  if (next < 0 || next >= deck.ids.length) {
+    // At the wall: rubber-band nudge in the direction attempted.
+    const cls = delta < 0 ? "bounce-l" : "bounce-r";
+    shell.classList.remove("bounce-l", "bounce-r");
+    void shell.offsetWidth;  // restart the animation if the class was just removed
+    shell.classList.add(cls);
+    return;
+  }
+  deck.idx = next;
+  showDeckCard();
+}
+
+// Same commit semantics as the timeline's add-tag input: re-adding a removed
+// tag un-suppresses it (keeps a derived tag derived); otherwise it's custom.
+function commitDeckTag(valOverride) {
+  const val = (valOverride != null ? valOverride : deckInput.value).trim();
+  const b = deckBookmark();
+  if (!val) return;
+  const low = val.toLowerCase();
+  let changed = unsuppressGlobal(low);   // a globally-deleted name comes back on re-tag
+  if (!tagsOf(b).some(t => t.toLowerCase() === low)) {
+    const removed = state.removedTags[b.id] || [];
+    if (removed.some(t => t.toLowerCase() === low)) {
+      state.removedTags[b.id] = removed.filter(t => t.toLowerCase() !== low);
+      if (!state.removedTags[b.id].length) delete state.removedTags[b.id];
+      saveRemovedTags();
+    } else {
+      state.customTags[b.id] = (state.customTags[b.id] || []).concat(val);
+      saveCustomTags();
+    }
+    changed = true;
+  }
+  if (changed) {
+    markTagUsed(low);
+    buildTagOptions();
+    refreshTagRow(b.id);  // keep the (hidden) timeline card in sync
+    renderDeckPills();
+    rebuildDeckPool();
+  }
+  deckInput.value = "";
+  renderDeckMenu();  // straight back to MRU suggestions for the next tag
+}
+
+// Backspace on an empty input: chip-style undo of the newest visible tag.
+// Mirrors the ×-on-pill logic — custom tags are dropped, derived suppressed.
+function removeLastDeckTag() {
+  const b = deckBookmark();
+  const tags = tagsOf(b);
+  if (!tags.length) return;
+  const tag = tags[tags.length - 1];
+  const custom = state.customTags[b.id] || [];
+  if (custom.includes(tag)) {
+    state.customTags[b.id] = custom.filter(t => t !== tag);
+    if (!state.customTags[b.id].length) delete state.customTags[b.id];
+    saveCustomTags();
+  } else {
+    state.removedTags[b.id] = (state.removedTags[b.id] || []).concat(tag);
+    saveRemovedTags();
+  }
+  buildTagOptions();
+  refreshTagRow(b.id);
+  renderDeckPills();
+  rebuildDeckPool();
+  if (!deckMenu.hidden) renderDeckMenu();  // the removed tag is suggestible again
+}
+
+// Remove the current post from view (same as the timeline trash button — a
+// local hide, restorable via "Restore N deleted"; the app never touches X or
+// the ft DB). Drop it from the deck snapshot and advance to the next card.
+function deleteCurrentDeckPost() {
+  const b = deckBookmark();
+  if (!b) return;
+  state.hidden.add(b.id);
+  saveHidden();
+  deck.ids.splice(deck.idx, 1);
+  if (!deck.ids.length) { closeDeck(); return; }
+  if (deck.idx >= deck.ids.length) deck.idx = deck.ids.length - 1;
+  showDeckCard();
+}
+
+deckInput.addEventListener("input", renderDeckMenu);
+deckInput.addEventListener("keydown", e => {
+  e.stopPropagation();
+  const empty = !deckInput.value;
+  const menuOpen = !deckMenu.hidden && deckMatches.length > 0;
+  if (e.key === "Enter") {
+    if (e.metaKey || e.ctrlKey) { window.open(deckBookmark().url, "_blank", "noopener"); return; }
+    commitDeckTag(menuOpen && deckActive >= 0 ? deckMatches[deckActive].label : undefined);
+  } else if (e.key === "Tab" && menuOpen && (deckMatches.length === 1 || deckActive >= 0)) {
+    // Tab-complete: fill the input with the sole (or highlighted) suggestion so
+    // Enter then adds the full tag, not the partial text you typed.
+    e.preventDefault();
+    deckInput.value = (deckActive >= 0 ? deckMatches[deckActive] : deckMatches[0]).label;
+    renderDeckMenu();
+  } else if (e.key === "Escape") {
+    if (menuOpen) closeDeckMenu();               // 1st Esc: close suggestions
+    else if (!empty) { deckInput.value = ""; }   // 2nd: clear typed text
+    else closeDeck();                            // 3rd: leave the deck
+  } else if (e.key === "ArrowLeft" && empty) {
+    e.preventDefault(); navDeck(-1);
+  } else if (e.key === "ArrowRight" && empty) {
+    e.preventDefault(); navDeck(1);
+  } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    const dir = e.key === "ArrowDown" ? 1 : -1;
+    if (menuOpen) {
+      e.preventDefault();
+      deckActive = (deckActive + dir + deckMatches.length) % deckMatches.length;
+      highlightDeckMenu();
+    } else if (empty) {
+      e.preventDefault();
+      document.getElementById("deckCard").scrollBy(0, dir * 160);
+    }
+  } else if ((e.key === "Backspace" || e.key === "Delete") && (e.metaKey || e.ctrlKey) && empty) {
+    e.preventDefault(); deleteCurrentDeckPost();   // ⌘⌫: remove this post from view
+  } else if (e.key === "Backspace" && empty) {
+    e.preventDefault(); removeLastDeckTag();
+  }
+});
+// The input owns the keyboard: whatever steals focus (a card click, a video),
+// take it back as long as the deck is up.
+deckInput.addEventListener("blur", () => {
+  if (deck.open) setTimeout(() => { if (deck.open) deckInput.focus(); }, 0);
+});
+deckMenu.addEventListener("mousedown", e => {
+  const opt = e.target.closest(".opt");
+  if (!opt) return;
+  e.preventDefault();
+  commitDeckTag(deckMatches[+opt.dataset.i].label);
+});
+document.getElementById("deck").addEventListener("click", e => {
+  // A page of its own, not a modal: only the × (or Esc) leaves — a stray
+  // click on the background shouldn't dump you back to the timeline.
+  if (e.target.closest("#deckClose")) { closeDeck(); return; }
+  if (e.target.closest("a") || e.target.tagName === "VIDEO" || e.target.closest(".deck-tagbar")) return;
+  const quote = e.target.closest(".quote");
+  if (quote && quote.dataset.url) window.open(quote.dataset.url, "_blank", "noopener");
+});
 
 function setSelecting(on) {
   state.selecting = on;
@@ -1559,6 +2010,7 @@ document.getElementById("sortDir").addEventListener("click", () => {
   applyState();
 });
 document.getElementById("selectToggle").addEventListener("click", () => setSelecting(!state.selecting));
+document.getElementById("deckToggle").addEventListener("click", openDeck);
 document.getElementById("manageTags").addEventListener("click", openTagManager);
 document.getElementById("tmClose").addEventListener("click", closeTagManager);
 document.getElementById("tmTabActive").addEventListener("click", () => setTagManagerTab("active"));
@@ -1697,7 +2149,46 @@ document.addEventListener("click", e => {
 });
 
 document.getElementById("totalCount").textContent = DATA.length.toLocaleString();
+
+// Label the environment so the daily app and a dev build are easy to tell apart
+// when flipping browser tabs: 8377 = prod (real data), any other served port =
+// feat (a dev-serve.sh sandbox). file:// stays plain "okiedoke".
+const OK_ENV = location.protocol.startsWith("http") ? (location.port === "8377" ? "prod" : "feat") : "";
+if (OK_ENV) {
+  document.title = "okiedoke:" + OK_ENV;
+  const badge = document.getElementById("envBadge");
+  badge.textContent = OK_ENV;
+  badge.classList.add(OK_ENV);
+  badge.hidden = false;
+}
+
 buildTagOptions();
 updateRestoreLink();
+// Heal any applied-but-globally-deleted tags before the first paint so they
+// show up immediately (not just after a save round-trip).
+if (healSuppression()) { buildTagOptions(); refreshAllTagRows(); }
 setFilterExpr(state.filterExpr);  // compile any saved expression, then render
+
+// Reconcile with the shared file — it is the source of truth. If it already
+// holds tags (possibly written by another browser), adopt them; if it's empty,
+// seed it from whatever we loaded, migrating this browser's legacy localStorage
+// exactly once. Never overwrites a non-empty file, so no store can clobber
+// another.
+if (SERVED) {
+  fetch("/tags").then(r => r.ok ? r.json() : null).then(doc => {
+    if (!doc) return;
+    const fileHasData =
+      Object.keys(doc.customTags || {}).length ||
+      (doc.hiddenBookmarks || []).length ||
+      (doc.savedFilters || []).length ||
+      Object.keys(doc.removedTags || {}).length ||
+      (doc.globalRemovedTags || []).length;
+    const localHasData =
+      Object.keys(state.customTags).length || state.hidden.size ||
+      state.savedFilters.length || Object.keys(state.removedTags).length ||
+      state.globalRemovedTags.size;
+    if (fileHasData) adoptTagDoc(doc);
+    else if (localHasData) persistTags();  // seed the empty file from this browser
+  }).catch(() => {});
+}
 </script>
