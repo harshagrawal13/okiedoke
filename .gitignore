@@ -1,4 +1,7 @@
-index.html
-reply-parents.json
 .DS_Store
 __pycache__/
+*.pyc
+.venv/
+.env
+data/
+.pytest_cache/

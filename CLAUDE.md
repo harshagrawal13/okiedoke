@@ -1,130 +1,81 @@
 # okiedoke — agent guide
 
-Local X.com-style viewer for Twitter/X bookmarks synced by the
-[Field Theory `ft` CLI](https://fieldtheory.dev/cli). Zero dependencies
-beyond Python 3 stdlib; no build system, no framework, no tests.
+Self-hosted X.com-style viewer for X bookmarks. FastAPI + Postgres + a vanilla-JS single page.
+Runs as one container (plus Postgres) on the owner's Kamaji server behind a Cloudflare Tunnel
+(hostname `bookmarks.harsh-agrawal.com`). Used daily, on a phone as well as a laptop.
+The previous generation (Field Theory `ft` crawler → SQLite → generated static HTML, run on a Mac)
+is gone; `app/import_ft.py` is its one-way migration path.
 
-## Architecture (read this first)
+## Architecture
 
-The app is ONE static HTML page with all data embedded:
+- `app/` Python 3.11+: `main.py` (factory), `api.py` (routes), `queries.py` (read models),
+  `sync.py` + `store.py` + `xparse.py` + `x_client.py` + `auth_x.py` + `media.py` (X sync),
+  `scheduler.py`, `import_ft.py`, `db.py` (pool + migrations), `migrations/NNN_*.sql`.
+- `web/` the UI (`index.html`, `style.css`, `app.js`). No framework, no build step, no libraries.
+- Postgres holds everything: `tweets`/`authors`/`media`/`bookmarks` (synced), `tags`/`bookmark_tags`/
+  `saved_filters` + `bookmarks.hidden_at` (user data), `sync_runs`, `x_auth`, `legacy_imports`.
+  Media files live on a volume (`MEDIA_DIR`), named `<tweetid>_<hash>.<ext>`, never rewritten.
+- No auth in the app by design: Cloudflare Access gates the hostname, the container publishes to
+  127.0.0.1 only. Don't add a second login; do keep the same-origin check on writes (`main.py` `guard`).
 
-1. `ft sync` (external tool) crawls X bookmarks into `~/.ft-bookmarks/`:
-   `bookmarks.db` (sqlite), `bookmarks.jsonl`, `media-manifest.json`, and a
-   `media/` folder with every image/video/avatar already downloaded.
-2. `generate.py` reads the DB + manifest and substitutes a JSON array for the
-   `/*__BOOKMARKS_DATA__*/[]` placeholder in `template.html`, writing
-   `~/.ft-bookmarks/index.html`. `./index.html` here is a symlink to it.
-3. `serve.py` (optional) serves that dir on localhost:8377 with a `POST /sync`
-   endpoint that runs `ft sync --rebuild --yes` and regenerates.
+## Hard-won constraints (do not regress)
 
-**Never edit `index.html`** — edit `template.html`, then run
-`python3 generate.py`.
+**X sync**
+- X rotates the refresh token on every refresh. `XAuth.access_token` refreshes under
+  `SELECT … FOR UPDATE` and stores the new pair in the same transaction. Never refresh outside it.
+- One sync at a time: Postgres advisory lock `SYNC_LOCK` (also reaps rows left 'running' by a dead process).
+- Each page commits on its own; a rate limit or error keeps progress and reports `partial`/`error`.
+  429 waits only if the reset is within 90 s, otherwise gives up and lets the schedule retry.
+- Incremental runs stop at the first page with nothing new. Only a **full** sweep may set
+  `missing_since` ("Deleted on X"), and only if it reached the end of the list, saw fewer than
+  `bookmark_cap - 5` bookmarks (X only exposes the latest 800), and touched ≥ 50% of known rows.
+  "Seen" is `last_seen_run = this run id`, not a timestamp (clock skew between hosts). Don't infer deletion any other way.
+- The first sync after an import must be a full one (`choose_kind`), and imported media (`ft:` keys) is
+  *adopted* by `store.sync_media` (match by asset name, then position+kind) so nothing is re-downloaded or doubled.
+- API text arrives HTML-escaped with t.co links: `xparse.expand_text` substitutes by code-point index
+  first, unescapes last, and drops media/quote links. Long posts come from `note_tweet`.
+- Media downloads: https + `*.twimg.com` only, atomic write, retried across runs, never fail a sync.
+  Until downloaded the UI hot-links X's URL.
+- The API only needs `X_CLIENT_ID` + `SECRET_KEY`; without them the app is browse-only.
 
-## Hard-won constraints (do not regress these)
+**User data (this is the part that must never be lost)**
+- Tags, hides and saved filters are only ever changed by granular, idempotent endpoints
+  (`POST/DELETE /api/bookmarks/{id}/tags`, `/api/bookmarks/hide`, `/api/tags/delete|restore`,
+  `/api/saved-filters`). No endpoint overwrites a whole document: two devices can't clobber each other.
+- Deleting a tag from every post only sets `tags.deleted_at`; the links stay so Restore is lossless.
+  Tagging with a deleted name revives it. First spelling of a tag wins; matching is case-insensitive
+  (`name_lower`, computed in Python with `str.lower()` to agree with the JS).
+- Sync code must never touch `tags`, `bookmark_tags`, `saved_filters`, `hidden_at`.
+- Migrations are forward-only SQL files; never edit one that has been released. The importer is additive and
+  idempotent (`ON CONFLICT DO NOTHING`), runs in one transaction, and opens ft's SQLite read-only.
 
-- **Output must live in `~/.ft-bookmarks/`, media referenced by RELATIVE
-  paths.** Safari refuses `file://` subresources outside the page's real
-  directory tree and resolves symlinks before checking — an app-dir
-  `media` symlink does NOT work.
-- **The media manifest is keyed by `tweetId`, not `bookmarkId`** — quoted
-  tweets' media appears under the *quoted* tweet's ID (`quoted_status_id`
-  column). Avatars are the entries with `profile_images` in `sourceUrl`,
-  keyed by `authorHandle`.
-- **"Deleted on X" detection**: `synced_at` updates on every row a crawl
-  sees. `serve.py` records the start time of a successful full re-crawl in
-  `last-full-sync.json`; `generate.py` tags rows with older `synced_at`.
-  It refuses to write the marker if <50% of rows were touched (partial
-  crawl guard). Don't infer deletion any other way — the DB has no flag.
-- **User tags/edits are persisted to one file, `~/.ft-bookmarks/okiedoke-tags.json`**
-  (see the schema below) — the single source of truth, browser- and URL-independent.
-  Nothing may ever mutate the ft database — it's the user's *bookmark* source of
-  truth. The DB is opened read-only everywhere; writes are limited to the
-  generated `index.html`, `okiedoke-tags.json` (via `serve.py`'s `POST /tags`),
-  and the `last-sync.json` / `last-full-sync.json` metadata.
-- **Auto-tagging is OFF** (`AUTO_DERIVE_TAGS = False` in `generate.py`): posts
-  arrive untagged so nothing the tool derives can fight the user's manual tags.
-  `globalRemovedTags` is now largely vestigial (it existed to bulk-hide derived
-  tags); `healSuppression()` guarantees an *applied* tag is never also in it.
-- 32 bookmarks are replies; ft stores NO data about the parent tweet.
-  `generate.py` reads optional `reply-parents.json`
-  (`{parent_id: {handle, text}}`) if someone fetches those; the UI renders a
-  "Replying to @handle" line when present.
-
-## Local data & backwards compatibility (this app is used daily — do not break it)
-
-The user's edits live in **`~/.ft-bookmarks/okiedoke-tags.json`** (one file, all
-browsers/URLs share it). `localStorage` is now only an **offline mirror + a
-migration source** — on load the app adopts the server file when it has data,
-and seeds the file from `localStorage` only when the file is empty (see the
-reconcile block at the bottom of `template.html`). Treat these keys as a stable
-on-disk shape — **renaming, removing, or changing the shape of an existing key
-silently discards real user data.**
-
-| Key | Shape | Meaning |
-|---|---|---|
-| `hiddenBookmarks` | `string[]` | ids of locally-deleted bookmarks |
-| `customTags` | `{ [id]: string[] }` | user-added tags per bookmark |
-| `removedTags` | `{ [id]: string[] }` | tags removed from a single post |
-| `globalRemovedTags` | `string[]` (lowercased) | tags deleted from every post (vestigial; see healSuppression) |
-| `savedFilters` | `{name, expr}[]` | named boolean filter expressions |
-| `filterExpr` | `string` (raw) | active filter — a per-browser VIEW pref, deliberately NOT in the shared file |
-| `tagLastUsed` | `{ [tagLower]: epochMs }` | for most-recently-used ordering |
-
-`okiedoke-tags.json` holds the same keys (minus `filterExpr`) under one JSON
-object with a `version` field; `serve.py`'s `write_tags()` coerces every key to
-its expected type so a bad payload can't corrupt it.
-
-Rules for any change:
-
-- **All tag/edit writes go through `persistTags()`** — it POSTs the full document
-  to the server (atomic write) and mirrors to `localStorage`. The `save*()`
-  helpers are thin wrappers over it; never write a tag key directly.
-- **Read fallbacks through `readJSON(key, fallback)` / `tagSource(...)`** — they
-  return the fallback on missing/malformed/wrong-shaped values, so corrupt
-  storage can never crash the app at load.
-- **Add features with NEW keys**, never by repurposing an existing one; extend
-  `TAGS_SHAPE` in `serve.py` and `currentTagDoc()` in `template.html` together.
-- The reconcile logic **never overwrites a non-empty file**, so one browser/store
-  can't clobber another — preserve that invariant.
-- Clearing browser site data no longer loses tags (they're on disk); only
-  deleting `okiedoke-tags.json` does.
-
-## Dev vs daily — never test a branch against real data
-
-The daily app (`okiedoke.command`) runs on **port 8377** against `~/.ft-bookmarks`
-(your REAL bookmarks + tags). **Never run a bare `python3 generate.py` or serve a
-feature branch against that dir** — it overwrites the real `index.html` and a
-buggy branch can corrupt the real `okiedoke-tags.json`.
-
-Instead, test feature branches with **`./dev-serve.sh`**: it kills any stale dev
-server, runs the current worktree on **port 8378** against a sandbox dir
-`~/.ft-bookmarks-dev` (real DB/media as read-only symlinks, a private COPY of your
-tags), and leaves 8377 + real data untouched. Both `serve.py` and `generate.py`
-honor `OKIEDOKE_DATA` and `OKIEDOKE_PORT`. Reset the sandbox with
-`rm -rf ~/.ft-bookmarks-dev`.
+**Front end**
+- All user text goes through `escapeHtml()` before `innerHTML`. Event delegation on `#timeline`.
+- Every edit goes through `mutate(job)`: apply locally, append to the localStorage queue, `pump()` delivers
+  in order with backoff. 4xx (except 408/429) drops the job and re-syncs; network errors keep it. Jobs must stay idempotent.
+  `fetch(..., {redirect: "error"})` on purpose: an expired tunnel login must look like "not delivered".
+- Phone behaviour that was learned the hard way: inputs ≥ 16px on touch (iOS zooms below that); no
+  auto-focus on touch (keyboard); the filter menu is moved to `<body>` as a top sheet while open (the chip row
+  scrolls horizontally and `backdrop-filter` captures `position: fixed`); the deck sets `touch-action: pan-y`
+  on `.deck-card` (the nearest scroller — otherwise a right-swipe becomes browser Back); the deck sizes to
+  `visualViewport` (iOS keyboard); video src gets `#t=0.001` (iOS first frame); `/media` must stay byte-exact for
+  Range requests (gzip is applied to `/api/` only).
+- Scroll events right after the add-tag input opens are the browser scrolling it into view; don't close on them.
+- Look: X light theme, `#0f1419` / `#536471` / `#1d9bf0`, borders `#eff3f4`, 600px column, system font stack.
+  Desktop must stay pixel-identical to the old app below the header.
 
 ## Verifying changes (required)
 
-Headless Chrome against the **sandbox** build (never the real one), after every
-`template.html` change:
-
 ```sh
-OKIEDOKE_DATA="$HOME/.ft-bookmarks-dev" python3 generate.py   # or just run ./dev-serve.sh
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --headless=new --disable-gpu --enable-logging=stderr --v=1 \
-  --screenshot=/tmp/ok.png --window-size=1200,2000 \
-  "file://$HOME/.ft-bookmarks-dev/index.html" 2> /tmp/ok.log
-grep -iE "uncaught|CONSOLE" /tmp/ok.log   # must be empty
+export TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:5432/postgres    # needs CREATE DATABASE; never your real DB
+pytest                       # ~90 tests: parser, sync engine vs a fake X, importer, API, real-socket e2e, browser UI
 ```
 
-Then look at the screenshot. Two real shipped-broken bugs were caught only
-this way (a JS crash that blanked the table; column overflow). To test
-interactions against the live server, drive `http://localhost:8378` (the dev
-server) — never 8377.
-
-## Style
-
-- UI mimics X.com light theme precisely: colors `#0f1419`/`#536471`/
-  `#1d9bf0`, borders `#eff3f4`, system font stack, 600px column.
-- Vanilla JS, event delegation on `#timeline`, no libraries.
-- All user text goes through `escapeHtml()` before `innerHTML`.
+- `tests/fakex.py` fakes X (token endpoint, `/users/me`, bookmarks pages, twimg media) via `httpx.MockTransport`;
+  `tests/test_e2e_sync.py` serves it over a real socket to exercise the default wiring.
+- `tests/ui` drives headless Chromium at 1200px and as a 390px touch phone against a live server seeded
+  from `tests/sample_ft.py`. Set `CHROMIUM_PATH` if needed. After any `web/` change also **look at screenshots**
+  (desktop and phone): two shipped-broken bugs in the old app were only caught that way.
+- Tests for X behaviour are against a fake. Anything that changes how we talk to X needs a manual first sync on
+  the real server (`docker compose logs -f app`).
+- Never point tests, the importer or a dev server at the production database or media volume.

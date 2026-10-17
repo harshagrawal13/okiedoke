@@ -1,0 +1,49 @@
+# okiedoke on Kamaji.
+#
+#   cp .env.example .env     # fill in the blanks
+#   docker compose up -d --build
+#
+# The app listens on 127.0.0.1:${PORT} only. Put it on the internet with your
+# Cloudflare Tunnel (see README), and protect the hostname with Cloudflare Access
+# the same way as the other apps: okiedoke has no login of its own.
+#
+# Postgres: by default a bundled container (profile "bundled-db", enabled through
+# COMPOSE_PROFILES in .env.example). To use an existing Postgres on Kamaji instead,
+# remove that profile from .env and set DATABASE_URL.
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://okiedoke:${POSTGRES_PASSWORD:-unset}@db:5432/okiedoke}
+      MEDIA_DIR: /data/media
+    volumes:
+      - media:/data/media
+    ports:
+      - "127.0.0.1:${PORT:-8379}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false          # not needed when DATABASE_URL points at an external Postgres
+
+  db:
+    profiles: ["bundled-db"]
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: okiedoke
+      POSTGRES_USER: okiedoke
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U okiedoke -d okiedoke"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
+  media:
