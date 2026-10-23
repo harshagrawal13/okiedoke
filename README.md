@@ -37,6 +37,37 @@ docker compose up -d --build    # app on 127.0.0.1:8379, Postgres in a volume
    `SECRET_KEY=$(openssl rand -base64 32)`, which encrypts the stored X tokens.
 4. Open the site, tap **Connect X**, authorize. The first sync is a full sweep.
 
+## Deploy on Kamaji
+
+Kamaji runs OkieDoke as a native launch agent. The app gets its own database and roles
+inside Kamaji's shared Postgres cluster; it does not need a Postgres container or a
+PostgREST service. Its FastAPI process listens on `127.0.0.1:8379` behind Kamaji's
+existing Cloudflare Tunnel and a dedicated Cloudflare Access application.
+
+After the OkieDoke and kamaji-server changes are merged and the Access application is
+created for `okiedoke.harsh-agrawal.com`:
+
+1. On Kamaji, run `bin/kamaji add-app okiedoke` and review the dry-run plan, then run it
+   with `--yes`. This creates an isolated `okiedoke` database and roles. The direct DB
+   connection URL is written with mode `0600` to `~/.config/kamaji/okiedoke.env`; it
+   connects as `okiedoke_anon` through the app's restricted authenticator role.
+2. Create `~/.config/okiedoke/secrets.env` with `X_CLIENT_ID`, `X_CLIENT_SECRET`, and
+   `SECRET_KEY`. Keep it outside the checkout and set its mode to `0600`. Generate the
+   key once with `openssl rand -base64 32`; do not rotate it unless you intend to
+   reconnect X, because it encrypts the saved OAuth tokens.
+3. From the checkout, run `deploy/setup-kamaji.sh` once to create the virtualenv.
+4. Run `bin/kamaji deploy okiedoke` and review the plan, then run it with `--yes`.
+   Kamaji applies `db/migrations/` before starting/restarting the app agent.
+
+The app stores downloaded media in
+`~/Developer/personal/kamaji-data/okiedoke/media`, outside the checkout. Kamaji's
+nightly backup job mirrors that directory to Google Drive. X's OAuth callback is
+`https://okiedoke.harsh-agrawal.com/auth/x/callback`.
+
+The Cloudflare Access AUD in `kamaji-server/apps.toml` is intentionally marked pending
+until that dedicated Access application exists. Do not install the tunnel config until
+the real AUD has replaced the placeholder.
+
 Already have a Postgres on the server? Remove `COMPOSE_PROFILES` from `.env` and set
 `DATABASE_URL` (the database and role must exist). Migrations run on start.
 
