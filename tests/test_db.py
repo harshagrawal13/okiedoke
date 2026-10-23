@@ -2,7 +2,7 @@ def test_migrate_is_idempotent(_db):
     assert _db.migrate() == []
     with _db.connection() as conn:
         versions = [r["version"] for r in conn.execute("SELECT version FROM schema_migrations")]
-    assert versions == ["001_init"]
+    assert versions == ["20261023000000_init"]
 
 
 def test_expected_tables_exist(_db):
