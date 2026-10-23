@@ -26,6 +26,7 @@ class Settings:
     media_dir: Path = Path("data/media")
     app_env: str = "prod"
     public_url: str = "http://localhost:8000"
+    auto_migrate: bool = True     # Kamaji applies db/migrations during deploy as the database owner
 
     # --- X API (official). Without a client id the app runs read-only: it can
     # browse imported bookmarks but cannot sync. ---
@@ -66,6 +67,7 @@ class Settings:
             media_dir=Path(os.environ.get("MEDIA_DIR", "data/media")),
             app_env=os.environ.get("APP_ENV", "prod"),
             public_url=os.environ.get("PUBLIC_URL", "http://localhost:8000"),
+            auto_migrate=_flag("AUTO_MIGRATE", True),
             x_client_id=os.environ.get("X_CLIENT_ID", "").strip(),
             x_client_secret=os.environ.get("X_CLIENT_SECRET", "").strip(),
             x_api_base=os.environ.get("X_API_BASE", d["x_api_base"].default).rstrip("/"),
