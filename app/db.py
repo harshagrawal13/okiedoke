@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 log = logging.getLogger("okiedoke.db")
-MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+MIGRATIONS_DIR = Path(__file__).parent.parent / "db" / "migrations"
 _MIGRATE_LOCK = 7_204_001   # advisory-lock keys (arbitrary, app-unique)
 SYNC_LOCK = 7_204_002
 
@@ -66,8 +66,12 @@ class Database:
                     if path.stem in done:
                         continue
                     log.info("applying migration %s", path.stem)
+                    source = path.read_text()
+                    if "-- migrate:up" not in source:
+                        raise RuntimeError(f"{path} is missing a dbmate -- migrate:up marker")
+                    source = source.split("-- migrate:up", 1)[1].split("-- migrate:down", 1)[0]
                     with conn.transaction():
-                        conn.execute(path.read_text())
+                        conn.execute(source)
                         conn.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (path.stem,))
                     applied.append(path.stem)
             finally:
