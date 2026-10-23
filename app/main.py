@@ -44,7 +44,7 @@ class _ApiGzip:
 
 
 def _open_with_retry(db: Database, attempts: int = 12) -> None:
-    """The database container may still be starting; wait for it instead of crash-looping."""
+    """The database may still be starting; wait for it instead of crash-looping."""
     for i in range(attempts):
         try:
             db.open()
@@ -64,9 +64,10 @@ def create_app(settings: Settings | None = None, *, http_factory=None, start_sch
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         _open_with_retry(db)
-        applied = db.migrate()
-        if applied:
-            log.info("applied migrations: %s", ", ".join(applied))
+        if settings.auto_migrate:
+            applied = db.migrate()
+            if applied:
+                log.info("applied migrations: %s", ", ".join(applied))
         app.state.scheduler = Scheduler(settings, db, app.state.engine)
         if start_scheduler:
             app.state.scheduler.start()
