@@ -1,116 +1,148 @@
 # okiedoke
 
-A local, X.com-style viewer for your Twitter/X bookmarks. One static HTML
-page, no framework, no cloud, no build tooling — your bookmarks, media, and
-avatars all render from files on your own disk.
+A self-hosted, X.com-style viewer for your X bookmarks: search, boolean tag filters, saved
+filters, bulk select, and a one-card-at-a-time tagging deck. Runs as one container plus
+Postgres on your own server, and works in a phone browser.
 
-Syncing is handled by [Field Theory (`ft`)](https://fieldtheory.dev/cli),
-which crawls your bookmarks from X into a local SQLite database and downloads
-every image and video.
-
-## Quick start
-
-You need two things first:
-
-1. **Python 3.9+** — already on most Macs; on Linux install via your package manager.
-2. **The `ft` CLI**, installed and signed in — [get it here](https://fieldtheory.dev/cli).
-   Make sure `ft sync` works once.
-
-Then, from this folder:
-
-```sh
-./setup.sh
+```
+X API (official, OAuth 2.0) ──► sync engine ──► Postgres   bookmarks, tags, filters, sync log
+                                    └─────────► media volume   images, video, avatars
+phone / laptop ◄──► FastAPI (this app) ◄──────► same data
 ```
 
-That's the whole thing. `setup.sh` checks your prerequisites, runs your first
-bookmark sync if you don't have one yet, builds the app, and opens it in your
-browser at **http://localhost:8377**. Re-run it any time — it only syncs when
-needed.
+Bookmarks, tags, hidden posts and filters all live on the server. The browser keeps no
+copy beyond a small queue of edits that have not been delivered yet.
 
-> On macOS you can also just **double-click `okiedoke.command`**.
-
-Prefer to do it by hand, or only want a static file to open? See
-[Manual setup](#manual-setup) below.
-
-## What you can do
-
-A faithful X timeline — avatars, media grids, quoted-tweet cards,
-like/repost/bookmark counts, "Show more" clamping — plus the things X doesn't
-give you:
-
-- **Search** across post text, authors, tags, and quoted posts.
-- **Boolean tag filters** — combine tags with `and` / `or` / `not` and
-  parentheses (e.g. `media and not archive`, or `not (github.com or arxiv.org)`).
-  Click **+** / **−** on any tag to include/exclude it without typing.
-- **Saved filters** — name a filter expression and re-apply it in one click.
-- **"Untagged only"** quick filter to find bookmarks with no tags — then
-  **Select → Select all** to act on them in bulk.
-- **Tag anything** — a `+` on every post opens an autocomplete of your existing
-  tags (most-recently-used first) or lets you type a new one. Remove a tag from
-  one post with its `×`.
-- **Manage tags** (button in the toolbar) — a dedicated window to **delete a
-  tag from every post at once**, or **restore** it later, split into Active /
-  Deleted tabs with search.
-- **Sort** by date, likes, reposts, or author.
-- **Multi-select delete** (X-style edit mode) with **Select all** over the
-  current filter. Deletes hide posts locally and are one-click restorable.
-- **Auto-sync on open** with a live progress ring; incremental, so bookmarks
-  you already have are skipped.
-- **"Deleted on X"** tag on bookmarks that have vanished from your X account
-  since the last full re-crawl.
-
-Everything you do here — tags, deletions, saved filters — lives only in your
-browser. **Your ft database is never modified.**
-
-## Syncing
-
-When served, the app syncs automatically on open (skipped if the last sync
-finished under 10 minutes ago). Syncs are **incremental**: `ft` stops crawling
-as soon as it reaches bookmarks already in the database, so a no-news sync
-takes seconds. You can also hit the **Sync** button any time.
-
-A **full re-crawl** of every bookmark — the only way to detect bookmarks that
-vanished from X — runs on demand via **Shift-click** on the Sync button. During
-a full crawl the button shows a progress ring with a live percentage.
-
-## Manual setup
-
-If you'd rather not use `setup.sh`:
+## Deploy (Docker + Cloudflare Tunnel)
 
 ```sh
-ft sync                 # 1. sync bookmarks (first run downloads all media)
-python3 generate.py     # 2. build ~/.ft-bookmarks/index.html
-python3 serve.py        # 3. serve http://localhost:8377 and open the browser
+git clone https://github.com/harshagrawal13/okiedoke && cd okiedoke
+cp .env.example .env            # fill in the blanks (see below)
+docker compose up -d --build    # app on 127.0.0.1:8379, Postgres in a volume
 ```
 
-For **read-only browsing with no server** (no in-app sync button), skip step 3
-and just `open ~/.ft-bookmarks/index.html`.
+1. **Tunnel.** Add the hostname to your `cloudflared` config and route DNS:
+   ```yaml
+   ingress:
+     - hostname: bookmarks.harsh-agrawal.com
+       service: http://localhost:8379      # or http://app:8000 if cloudflared shares the compose network
+   ```
+   `cloudflared tunnel route dns <tunnel> bookmarks.harsh-agrawal.com`
+2. **Protect it before opening it.** okiedoke has no login of its own. Put the hostname behind
+   the same Cloudflare Access policy as your other apps. The compose file publishes the app on
+   `127.0.0.1` only, so the tunnel is the only way in.
+3. **X developer app.** In the X developer console create an app with *User authentication*:
+   OAuth 2.0, permission **Read**, callback URL `https://bookmarks.harsh-agrawal.com/auth/x/callback`
+   (must equal `PUBLIC_URL` + `/auth/x/callback`). Put the client id/secret in `.env`, plus
+   `SECRET_KEY=$(openssl rand -base64 32)`, which encrypts the stored X tokens.
+4. Open the site, tap **Connect X**, authorize. The first sync is a full sweep.
 
-## How it works
+## Deploy on Kamaji
 
-- `generate.py` reads `~/.ft-bookmarks/bookmarks.db` and `media-manifest.json`,
-  embeds all bookmark data as JSON into `template.html`, and writes the result
-  to `~/.ft-bookmarks/index.html` — right next to the `media/` folder, so
-  everything loads via relative paths (Safari blocks symlinked/cross-directory
-  `file://` loads).
-- `serve.py` serves that directory and exposes `POST /sync` (`?mode=full`
-  forces a re-crawl, `?force=1` bypasses the cooldown) plus `GET /sync-status`
-  for progress polling. On first run it builds `index.html` for you.
-- Everything you change in the UI lives in the browser's `localStorage`
-  (`hiddenBookmarks`, `customTags`, `removedTags`, `globalRemovedTags`,
-  `savedFilters`, `filterExpr`, `tagLastUsed`). Nothing is ever removed from the
-  ft database; clearing your browser's site data resets it all.
+Kamaji runs OkieDoke as a native launch agent. The app gets its own database and roles
+inside Kamaji's shared Postgres cluster; it does not need a Postgres container or a
+PostgREST service. Its FastAPI process listens on `127.0.0.1:8379` behind Kamaji's
+existing Cloudflare Tunnel and a dedicated Cloudflare Access application.
 
-Data lives wherever ft puts it (`~/.ft-bookmarks` by default); override with the
-`OKIEDOKE_DATA` environment variable.
+After the OkieDoke and kamaji-server changes are merged and the Access application is
+created for `okiedoke.harsh-agrawal.com`:
 
-## Files
+1. On Kamaji, run `bin/kamaji add-app okiedoke` and review the dry-run plan, then run it
+   with `--yes`. This creates an isolated `okiedoke` database and roles. The direct DB
+   connection URL is written with mode `0600` to `~/.config/kamaji/okiedoke.env`; it
+   connects as `okiedoke_anon` through the app's restricted authenticator role.
+2. Create `~/.config/okiedoke/secrets.env` with `X_CLIENT_ID`, `X_CLIENT_SECRET`, and
+   `SECRET_KEY`. Keep it outside the checkout and set its mode to `0600`. Generate the
+   key once with `openssl rand -base64 32`; do not rotate it unless you intend to
+   reconnect X, because it encrypts the saved OAuth tokens.
+3. From the checkout, run `deploy/setup-kamaji.sh` once to create the virtualenv.
+4. Run `bin/kamaji deploy okiedoke` and review the plan, then run it with `--yes`.
+   Kamaji applies `db/migrations/` before starting/restarting the app agent.
 
-| File | Purpose |
+The app stores downloaded media in
+`~/Developer/personal/kamaji-data/okiedoke/media`, outside the checkout. Kamaji's
+nightly backup job mirrors that directory to Google Drive. X's OAuth callback is
+`https://okiedoke.harsh-agrawal.com/auth/x/callback`.
+
+The Cloudflare Access AUD in `kamaji-server/apps.toml` is intentionally marked pending
+until that dedicated Access application exists. Do not install the tunnel config until
+the real AUD has replaced the placeholder.
+
+Already have a Postgres on the server? Remove `COMPOSE_PROFILES` from `.env` and set
+`DATABASE_URL` (the database and role must exist). Migrations run on start.
+
+## Import your existing Field Theory data (once)
+
+```sh
+rsync -a ~/.ft-bookmarks/ kamaji:/srv/ft-import/
+docker compose run --rm -v /srv/ft-import:/import:ro app python -m app.import_ft /import --dry-run
+docker compose run --rm -v /srv/ft-import:/import:ro app python -m app.import_ft /import
+```
+
+Imports bookmarks, media and avatars, your tags (order and spelling), hidden posts, deleted tags,
+saved filters, tag recency and the "deleted on X" flags, in one transaction. ft's database is opened
+read-only. Re-running never overwrites anything already there. Your `okiedoke-tags.json` is also stored
+verbatim in the `legacy_imports` table. Not imported: ft's auto-derived categories (auto-tagging was off)
+and the per-browser filter text. Do this before or after connecting X; the first sweep adopts the imported
+media rather than downloading it again.
+
+## Using it
+
+- **Phone:** open the site, then *Share → Add to Home Screen*. The header slides away as you scroll down
+  and returns on scroll up; filters open as a sheet; in **Tag cards**, swipe left/right or use the buttons.
+- **Sync** runs when you open the page (skipped if one ran in the last 10 minutes), hourly in the
+  background, and as a full sweep about weekly. The status text in the header opens a dialog with the last
+  result, errors in plain language, **Sync now**, **Full sweep** and **Reconnect X**.
+- A full sweep refreshes counts and marks bookmarks that are no longer on X (red "Deleted on X" pill).
+  It only flags anything when it provably saw the whole list.
+- Edits (tags, hides, filters) apply instantly and are delivered in the background. Offline or signed
+  out, they queue (also across reloads) and the status shows "Offline — will retry".
+
+## Limits to know
+
+- X exposes only your **800 most recent bookmarks** through the API. Older ones exist here only
+  through the import. Because new bookmarks arrive a few at a time, syncing regularly never loses any.
+- The X API bills per post read (the sources I found put owned reads at about $0.001 each; check your
+  Developer Console). A quiet sync reads 25 posts; a weekly sweep reads up to 800. Tune with
+  `INCREMENTAL_PAGE_SIZE`, `SYNC_INTERVAL_MIN`, `FULL_SWEEP_DAYS`.
+- Endpoints and parameters follow X's published v2 API and were not exercised against live X during
+  development (only against a fake of it). Watch the first sync (`docker compose logs -f app`).
+
+## Operations
+
+| | |
 |---|---|
-| `setup.sh` | One-step onboarding: check prereqs → first sync → build → launch |
-| `template.html` | The whole app: HTML, CSS, and JS with a `/*__BOOKMARKS_DATA__*/` placeholder |
-| `generate.py` | Build script: DB + media manifest → `index.html` |
-| `serve.py` | Local server with the `/sync` endpoint (self-builds on first run) |
-| `okiedoke.command` | Double-clickable launcher that runs `setup.sh` (macOS) |
-| `CLAUDE.md` / `AGENTS.md` | Onboarding notes for coding agents (symlinked) |
+| Logs | `docker compose logs -f app` (every sync logs its counts; failures include the reason) |
+| Health | `GET /api/health` (200 when Postgres answers); the container has a healthcheck |
+| Backup | `deploy/backup.sh /var/backups/okiedoke` (Postgres dump + media), e.g. nightly from cron |
+| Restore | `gunzip -c db.sql.gz \| docker compose exec -T db psql -U okiedoke okiedoke`; untar media into the volume |
+| Re-sync everything | **Full sweep** in the sync dialog |
+| X login expired | header shows "X login expired": tap **Reconnect X** |
+
+## Configuration
+
+See `.env.example`. Required: `PUBLIC_URL`, `POSTGRES_PASSWORD` (or `DATABASE_URL`). For sync:
+`X_CLIENT_ID`, `SECRET_KEY` (and `X_CLIENT_SECRET` unless your X app is a public client). Without
+X credentials the app still runs and browses imported data.
+
+## Development
+
+```sh
+python -m venv .venv && . .venv/bin/activate
+pip install -e '.[dev]'
+export TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:5432/postgres   # any Postgres you can CREATE DATABASE on
+pytest                      # backend, importer, API and browser tests (needs Chromium for tests/ui)
+DATABASE_URL=postgresql://... uvicorn app.main:create_app --factory --reload
+```
+
+Tests create and drop their own throwaway database; they never touch `DATABASE_URL`.
+
+| Path | Purpose |
+|---|---|
+| `app/xparse.py`, `x_client.py`, `auth_x.py` | X payloads, API client (retry/backoff), OAuth + rotating-token handling |
+| `app/sync.py`, `store.py`, `media.py`, `scheduler.py` | sync engine, idempotent writes, downloads, schedule |
+| `app/api.py`, `queries.py`, `main.py` | routes, read models, app factory |
+| `app/import_ft.py` | one-time ft importer |
+| `app/migrations/` | forward-only SQL migrations |
+| `web/` | the UI: `index.html`, `style.css`, `app.js` (vanilla JS, no build step) |
+| `tests/` | pytest suites; `tests/ui` drives headless Chromium at desktop and phone size |

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="color-scheme" content="light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bookmarks">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>okiedoke</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <div class="title-row">
+      <h1>Bookmarks</h1>
+      <span class="envbadge" id="envBadge" hidden></span>
+      <div class="sub"><span id="totalCount">0</span> saved</div>
+      <button class="syncinfo" id="syncInfo" type="button" hidden></button>
+    </div>
+    <div class="controls">
+      <div class="searchbox">
+        <svg viewBox="0 0 24 24"><path d="M10.25 3.75c-3.59 0-6.5 2.91-6.5 6.5s2.91 6.5 6.5 6.5c1.795 0 3.419-.726 4.596-1.904 1.178-1.177 1.904-2.801 1.904-4.596 0-3.59-2.91-6.5-6.5-6.5zm-8.5 6.5c0-4.694 3.806-8.5 8.5-8.5s8.5 3.806 8.5 8.5c0 1.986-.682 3.815-1.824 5.262l4.781 4.781-1.414 1.414-4.781-4.781c-1.447 1.142-3.276 1.824-5.262 1.824-4.694 0-8.5-3.806-8.5-8.5z"/></svg>
+        <input id="search" type="search" placeholder="Search bookmarks" autocomplete="off" autocapitalize="off" enterkeyhint="search">
+      </div>
+      <div class="chips">
+        <details class="tagdrop" id="tagDropdown">
+          <summary class="chip" id="tagSummary">Filter</summary>
+          <div class="tagmenu" id="tagMenu"></div>
+        </details>
+        <select class="chip" id="sortKey" aria-label="Sort by">
+          <option value="date">Latest</option>
+          <option value="likes">Most liked</option>
+          <option value="reposts">Most reposted</option>
+          <option value="author">Author</option>
+        </select>
+        <button class="chip" id="sortDir" title="Toggle sort direction" aria-label="Toggle sort direction">↓</button>
+        <button class="chip" id="selectToggle">Select</button>
+        <button class="chip" id="deckToggle" title="Tag posts one-by-one">Tag cards</button>
+        <button class="chip" id="manageTags" title="Delete or restore tags">Manage tags</button>
+        <button class="chip" id="syncBtn" hidden>Sync</button>
+        <span class="restore" id="restoreLink" role="button" tabindex="0" hidden></span>
+        <span class="shown"><span id="shownCount">0</span> shown</span>
+        <span class="savestat" id="saveStat" role="status" aria-live="polite"></span>
+      </div>
+    </div>
+  </div>
+
+  <div id="timeline"><div class="empty"><div class="big">Loading…</div></div></div>
+
+  <div class="selbar">
+    <span class="selcount"><span id="selCount">0</span> selected</span>
+    <button class="btn" id="selAll">Select all</button>
+    <button class="btn" id="selCancel">Cancel</button>
+    <button class="btn btn-danger" id="selDelete" disabled>Delete</button>
+  </div>
+</div>
+
+<!-- Manage-tags modal: a top-level element (outside .shell) so its fixed
+     full-screen overlay and stacking are never trapped by the sticky header. -->
+<div id="tagManager" class="tm-backdrop" hidden>
+  <div class="tm" role="dialog" aria-label="Manage tags" aria-modal="true">
+    <div class="tm-head">
+      <h2>Manage tags</h2>
+      <button id="tmClose" class="tm-x" type="button" title="Close" aria-label="Close">×</button>
+    </div>
+    <p class="tm-note">Deleting a tag removes it from every post (the posts and your synced data are never touched). Restore it any time from the Deleted tab.</p>
+    <div class="tm-tabs">
+      <button id="tmTabActive" class="tm-tab" type="button">Active</button>
+      <button id="tmTabDeleted" class="tm-tab" type="button">Deleted</button>
+    </div>
+    <input id="tmSearch" class="tm-search" type="search" autocomplete="off" autocapitalize="off" placeholder="Search tags">
+    <div id="tmSummary" class="tm-summary"></div>
+    <div id="tmList" class="tm-list"></div>
+  </div>
+</div>
+
+<!-- Sync status / controls. Replaces the old alert() popups: readable on a phone,
+     and the only place that exposes "Full sweep" without a Shift key. -->
+<div id="syncDialog" class="tm-backdrop" hidden>
+  <div class="tm" role="dialog" aria-label="Sync" aria-modal="true">
+    <div class="tm-head">
+      <h2>Sync with X</h2>
+      <button id="syncClose" class="tm-x" type="button" title="Close" aria-label="Close">×</button>
+    </div>
+    <div id="syncBody" class="sync-body"></div>
+  </div>
+</div>
+
+<!-- Tag-cards deck: top-level like #tagManager so the sticky header can never
+     trap its overlay or swallow its clicks. -->
+<div id="deck" class="deck-backdrop" hidden>
+  <div class="deck-shell">
+    <div class="deck-head">
+      <span class="deck-count" id="deckCount"></span>
+      <button id="deckClose" class="tm-x" type="button" title="Close" aria-label="Close">×</button>
+    </div>
+    <div class="deck-card" id="deckCard" role="dialog" aria-label="Tag cards" aria-modal="true"></div>
+    <div class="deck-tagbar">
+      <div class="deck-pills" id="deckPills"></div>
+      <input id="deckInput" class="deck-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+             enterkeyhint="done" placeholder="type a tag, Enter to add">
+      <div class="tagsuggest deck-menu" id="deckMenu" hidden></div>
+    </div>
+    <div class="deck-nav">
+      <button class="btn" id="deckPrev" type="button" aria-label="Previous post">‹ Prev</button>
+      <button class="btn" id="deckOpen" type="button" aria-label="Open on X">Open ↗</button>
+      <button class="btn" id="deckDel" type="button" aria-label="Remove post from view">Remove</button>
+      <button class="btn" id="deckNext" type="button" aria-label="Next post">Next ›</button>
+    </div>
+    <div class="deck-hints">
+      <kbd>←</kbd> <kbd>→</kbd> prev / next &nbsp; <kbd>↑</kbd> <kbd>↓</kbd> scroll · pick &nbsp; <kbd>⇥</kbd> complete &nbsp;
+      <kbd>⌫</kbd> remove last tag &nbsp; <kbd>⌘⌫</kbd> remove post &nbsp; <kbd>⌘↵</kbd> open on X &nbsp; <kbd>Esc</kbd> exit
+    </div>
+    <div class="deck-touchhint">Swipe ← → to move between posts</div>
+  </div>
+</div>
+
+<script src="/app.js" defer></script>
+</body>
+</html>
