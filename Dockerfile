@@ -11,6 +11,7 @@ RUN python -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml
  && pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
 COPY app ./app
+COPY db/migrations ./db/migrations
 COPY web ./web
 
 RUN useradd --system --uid 10001 --home-dir /srv/okiedoke okiedoke \
